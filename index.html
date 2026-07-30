@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E Store - المتجر الإلكتروني</title>
+    <!-- ربط الـ CSS من مجلد css -->
+    <link rel="stylesheet" href="css/style.css">
+    <!-- مكتبة الأيقونات -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <header>
+        <div class="logo">
+            <span>E Store</span>
+        </div>
+        
+        <input type="text" placeholder="ابحث عن منتج..." class="search">
+        
+        <nav>
+            <div class="dropdown">
+                <a href="#" class="nav-category-link" data-category="all">الرئيسية</a>
+            </div>
+            
+            <div class="dropdown">
+                <a href="#" class="nav-category-link" data-category="men">رجالي</a>
+                <div class="dropdown-content">
+                    <a href="#" class="nav-category-link" data-category="men">جميع ملابس الرجال</a>
+                </div>
+            </div>
+            
+            <div class="dropdown">
+                <a href="#" class="nav-category-link" data-category="women">نسائي</a>
+                <div class="dropdown-content">
+                    <a href="#" class="nav-category-link" data-category="women">جميع ملابس النساء</a>
+                </div>
+            </div>
+            
+            <div class="dropdown">
+                <a href="#" class="nav-category-link" data-category="kids">أطفال</a>
+                <div class="dropdown-content">
+                    <a href="#" class="nav-category-link" data-category="kids">جميع ملابس الأطفال</a>
+                </div>
+            </div>
+            
+            <div class="dropdown">
+                <a href="#" class="nav-category-link" data-category="offers">العروض</a>
+            </div>
+        </nav>
+        
+        <div class="icons">
+            <button><i class="fas fa-search"></i></button>
+            <button><i class="fas fa-user"></i></button>
+            <!-- زر السلة وموقعه العداد -->
+            <button class="cart-btn" style="position: relative;">
+                <i class="fas fa-shopping-cart"></i>
+                <span id="cart-count">0</span>
+            </button>
+        </div>
+    </header>
+
+    <section class="hero">
+        <h1>أحدث صيحات الموضة</h1>
+        <p>خصومات تصل إلى 50%</p>
+        <button>تسوق الآن</button>
+    </section>
+
+    <section class="best-products">
+        <!-- عنوان القسم بيتغير تلقائياً حسب الاختيار -->
+        <h2 id="section-title">أفضل المنتجات</h2>
+        <div class="products">
+            <!-- المنتجات تُعرض ديناميكيًا عبر JavaScript -->
+        </div>
+    </section>
+
+    <!-- نافذة سلة المشتريات -->
+    <div id="cart-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" id="close-cart">&times;</span>
+            <h2>سلة المشتريات</h2>
+            <div id="cart-items" style="margin: 20px 0;">
+                <!-- المنتجات ستظهر هنا -->
+            </div>
+            <div class="cart-total" style="font-size: 20px; font-weight: bold; margin: 15px 0;">
+                الإجمالي: <span id="cart-total-price">0</span> ج.م
+            </div>
+            <button class="cart" style="width: 100%;">إتمام الشراء</button>
+        </div>
+    </div>
+
+    <!-- ربط الـ JS من مجلد js -->
+    <script src="js/script.js"></script>
+</body>
+</html>
