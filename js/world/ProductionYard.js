@@ -35,8 +35,9 @@ const COLORS = {
 };
 
 export class ProductionYard {
-    constructor({ scene }) {
+    constructor({ scene, collision = null }) {
         this.scene = scene;
+        this.collision = collision;
         this.entries = new Map(); // instanceId -> entry
         this._raycaster = new THREE.Raycaster();
         this._pointer = new THREE.Vector2();
@@ -104,6 +105,18 @@ export class ProductionYard {
                     producing: false,
                     ready: false
                 });
+
+                if (this.collision) {
+                    this.collision.addBox({
+                        id: `prod-${b.id}`,
+                        x: pos.x,
+                        z: pos.z,
+                        width: 2.2,
+                        depth: 2.2,
+                        height: 3.2,
+                        tag: 'production'
+                    });
+                }
             }
 
             const entry = this.entries.get(b.id);
