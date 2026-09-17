@@ -12,7 +12,7 @@ import {
 } from '../data/GameData.js';
 import { uuid } from '../utils/Utils.js';
 
-class AnimalSystem {
+class AnimalSystemService {
 
     constructor() {
         this._initListeners();
@@ -585,4 +585,4 @@ class AnimalSystem {
 }
 
 export const AnimalSystem =
-    new AnimalSystem();
+    new AnimalSystemService();

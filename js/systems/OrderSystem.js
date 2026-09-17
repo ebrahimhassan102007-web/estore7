@@ -18,7 +18,7 @@ import {
 } from '../utils/Utils.js';
 
 
-class OrderSystem {
+class OrderSystemService {
 
     constructor() {
         this._initListeners();
@@ -780,4 +780,4 @@ class OrderSystem {
 
 
 export const OrderSystem =
-    new OrderSystem();
+    new OrderSystemService();

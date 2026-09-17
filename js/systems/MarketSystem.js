@@ -8,7 +8,7 @@ import { GameState } from '../core/GameState.js';
 import { ITEMS, ECONOMY } from '../data/GameData.js';
 import { uuid, randPick, randInt, randFloat } from '../utils/Utils.js';
 
-class MarketSystem {
+class MarketSystemService {
     constructor() {
         this._initListeners();
     }
@@ -580,4 +580,4 @@ class MarketSystem {
 }
 
 export const MarketSystem =
-    new MarketSystem();
+    new MarketSystemService();

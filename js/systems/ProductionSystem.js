@@ -14,7 +14,7 @@ import {
 } from '../data/GameData.js';
 import { uuid } from '../utils/Utils.js';
 
-class ProductionSystem {
+class ProductionSystemService {
 
     constructor() {
         this._initListeners();
@@ -809,4 +809,4 @@ class ProductionSystem {
 }
 
 export const ProductionSystem =
-    new ProductionSystem();
+    new ProductionSystemService();

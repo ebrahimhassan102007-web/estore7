@@ -15,7 +15,7 @@ import {
 import { uuid } from '../utils/Utils.js';
 
 
-class BuildingSystem {
+class BuildingSystemService {
 
     // =========================================================
     // PURCHASE BUILDING
@@ -911,4 +911,4 @@ class BuildingSystem {
 
 
 export const BuildingSystem =
-    new BuildingSystem();
+    new BuildingSystemService();

@@ -15,6 +15,9 @@ import { SaveManager } from './core/SaveManager.js';
 import { Time } from './core/TimeManager.js';
 import { LandSystem, LAND_CONFIG } from './systems/LandSystem.js';
 import { FarmingSystem, CROPS_DEFINITIONS } from './systems/FarmingSystem.js';
+import { ProductionSystem } from './systems/ProductionSystem.js';
+import { getBuilding, STARTER_KIT } from './data/GameData.js';
+import { uuid } from './utils/Utils.js';
 import HUD from './ui/HUD.js';
 
 /* ============================================================
@@ -391,6 +394,13 @@ class MyFarmApp {
             LandSystem.init();
             QuestSystem.init();
 
+            // 🏭 سلسلة الإنتاج Hay Day: طاحونة الحبوب ← المخبز
+            try {
+                this.initProductionChain();
+            } catch (e) {
+                console.warn('[MY FARM] Production chain notice:', e);
+            }
+
 
             this.createPlayer();
             this.buildFarmFields();
@@ -434,9 +444,28 @@ class MyFarmApp {
             Events.on('crop:ready', (data) => this.renderSlotCrop(data.fieldId, data.slot.slotIndex));
             Events.on('crop:harvested', (data) => this.onCropHarvested(data));
 
+            // أحداث سلسلة الإنتاج
+            Events.on('production:started', (buildingId, recipeId) =>
+                console.log(`[PRODUCTION] 🏭 بدأ الإنتاج: ${recipeId} @ ${buildingId}`));
+            Events.on('production:ready', (buildingId, recipeId) =>
+                console.log(`[PRODUCTION] ✅ المنتج جاهز للاستلام: ${recipeId}`));
+            Events.on('production:completed', (buildingId, recipeId, output) =>
+                console.log(`[PRODUCTION] 📦 تم الاستلام: ${output.amount}× ${output.item}`));
+            Events.on('inventory:full', () =>
+                console.warn('[PRODUCTION] ⚠️ المخزن ممتلئ — قم بترقية السعة!'));
+
             this.initialized = true;
             this.hideLoading();
             this.start();
+
+            // واجهة للاختبار من وحدة التحكم (Spck console)
+            window.MYFARM = {
+                app: this,
+                GameState,
+                Events,
+                FarmingSystem,
+                ProductionSystem
+            };
 
             Events.emit('game:ready', this);
             console.log('[MY FARM] Farm World is ready.');
@@ -444,6 +473,67 @@ class MyFarmApp {
             console.error('[MY FARM] Boot error:', error);
             this.hideLoading();
         }
+    }
+
+    /* ============================================================
+       🏭 سلسلة الإنتاج — طاحونة الحبوب ← المخبز
+       يزرع المبنيين + حقيبة بداية عند أول تشغيل فقط،
+       ولا يلمس الحفوظات الموجودة أبدًا.
+       ============================================================ */
+    initProductionChain() {
+        const buildings = GameState.get('farm.buildings') || [];
+        const isFreshFarm = buildings.length === 0;
+        let changed = false;
+
+        for (const typeId of STARTER_KIT.buildings) {
+            // لا تكرار — إن وُجد المبنى مسبقًا نتخطّاه
+            if (buildings.some(b => b.typeId === typeId)) continue;
+
+            const def = getBuilding(typeId);
+            if (!def) continue;
+
+            buildings.push({
+                id: uuid(),
+                typeId,
+                name: def.name,
+                icon: def.icon,
+                level: 1,
+                status: 'built',
+                queueLimit: def.queueLimit || 3,
+                productionQueue: [],
+                placedAt: Date.now()
+            });
+            changed = true;
+            console.log(`[PRODUCTION] مبنى جاهز: ${def.icon} ${def.name}`);
+        }
+
+        if (changed) {
+            GameState.set('farm.buildings', buildings);
+        }
+
+        if (isFreshFarm) {
+            // مواد خام للانطلاق الفوري في السلسلة
+            const items = GameState.get('inventory.items') || {};
+            for (const [itemId, count] of Object.entries(STARTER_KIT.items)) {
+                if (!items[itemId]) items[itemId] = { count: 0, quality: 1 };
+                items[itemId].count += count;
+            }
+            GameState.set('inventory.items', items);
+
+            const unlocked = GameState.get('unlocked') || {};
+            GameState.set('unlocked', {
+                ...unlocked,
+                buildings: [...new Set([...(unlocked.buildings || []), ...STARTER_KIT.buildings])],
+                recipes: [...new Set([...(unlocked.recipes || []), ...STARTER_KIT.recipes])]
+            });
+
+            console.log('[PRODUCTION] 🎁 حقيبة البداية:', JSON.stringify(STARTER_KIT.items));
+        }
+
+        console.log(
+            '[PRODUCTION] ✅ السلسلة متصلة:',
+            ProductionSystem ? 'طاحونة الحبوب ← المخبز' : 'معطلة'
+        );
     }
 
     createRenderer() {

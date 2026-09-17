@@ -32,7 +32,7 @@ const EVENT_TYPES = {
     }
 };
 
-class EventSystem {
+class EventSystemService {
 
     constructor() {
         this._checkActiveEvent();
@@ -560,4 +560,4 @@ class EventSystem {
 }
 
 export const EventSystem =
-    new EventSystem();
+    new EventSystemService();

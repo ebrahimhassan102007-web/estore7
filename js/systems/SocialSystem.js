@@ -8,7 +8,7 @@ import { GameState } from '../core/GameState.js';
 import { ECONOMY } from '../data/GameData.js';
 import { uuid, randPick } from '../utils/Utils.js';
 
-class SocialSystem {
+class SocialSystemService {
 
     constructor() {
         this._initAIPlayers();
@@ -584,4 +584,4 @@ class SocialSystem {
 }
 
 export const SocialSystem =
-    new SocialSystem();
+    new SocialSystemService();
