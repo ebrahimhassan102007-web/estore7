@@ -1,0 +1,14 @@
+{
+  "name": "my-farm-3d",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MY FARM 3D — Hay Day style farming game (browser ES modules, no build step)",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/run.mjs",
+    "test:static": "node tests/static-checks.mjs",
+    "test:chain": "node tests/chain.test.mjs",
+    "test:persistence": "node tests/persistence.test.mjs",
+    "serve": "python3 -m http.server 8000 --bind 0.0.0.0"
+  }
+}

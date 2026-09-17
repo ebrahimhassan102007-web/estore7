@@ -1,0 +1,281 @@
+/* ===== Animations & Effects ===== */
+
+/* Floating Text */
+.floating-text {
+    position: absolute;
+    font-weight: 900;
+    font-size: 16px;
+    pointer-events: none;
+    z-index: 1000;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    animation: floatUp 1.2s ease forwards;
+}
+
+.floating-text.coins { color: var(--gold); }
+.floating-text.gems { color: var(--gem); }
+.floating-text.xp { color: var(--accent); }
+.floating-text.energy { color: #2196F3; }
+
+@keyframes floatUp {
+    0% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+
+    50% {
+        opacity: 1;
+        transform: translateY(-30px) scale(1.2);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateY(-60px) scale(0.8);
+    }
+}
+
+/* Particles */
+.particle {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 999;
+}
+
+.particle.sparkle {
+    background: radial-gradient(circle, #FFD700, transparent);
+    animation: sparkle 0.8s ease forwards;
+}
+
+.particle.leaf {
+    background: #4CAF50;
+    animation: leafFall 1s ease forwards;
+}
+
+.particle.heart {
+    background: #E91E63;
+    clip-path: polygon(
+        50% 0%,
+        100% 35%,
+        80% 100%,
+        50% 80%,
+        20% 100%,
+        0% 35%
+    );
+    animation: heartFloat 1.2s ease forwards;
+}
+
+@keyframes sparkle {
+    0% {
+        opacity: 1;
+        transform: scale(0) rotate(0deg);
+    }
+
+    100% {
+        opacity: 0;
+        transform: scale(2) rotate(180deg);
+    }
+}
+
+@keyframes leafFall {
+    0% {
+        opacity: 1;
+        transform: translateY(0) rotate(0deg);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateY(40px) rotate(360deg);
+    }
+}
+
+@keyframes heartFloat {
+    0% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateY(-50px) scale(1.5);
+    }
+}
+
+/* Harvest Burst */
+.harvest-burst {
+    position: absolute;
+    width: 60px;
+    height: 60px;
+    pointer-events: none;
+    z-index: 998;
+}
+
+.harvest-burst::before,
+.harvest-burst::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 3px solid var(--accent);
+    animation: burstRing 0.6s ease forwards;
+}
+
+.harvest-burst::after {
+    border-color: var(--gold);
+    animation-delay: 0.1s;
+}
+
+@keyframes burstRing {
+    0% {
+        transform: scale(0.5);
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(2);
+        opacity: 0;
+    }
+}
+
+/* Level Up Screen Animation */
+.levelup-bg {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(
+        circle,
+        rgba(255,215,0,0.2),
+        transparent
+    );
+    z-index: 399;
+    pointer-events: none;
+    animation: levelupBg 2s ease forwards;
+}
+
+@keyframes levelupBg {
+    0% {
+        opacity: 0;
+    }
+
+    50% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+    }
+}
+
+/* Button Press */
+.btn-press {
+    animation: btnPress 0.15s ease;
+}
+
+@keyframes btnPress {
+    0% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(0.92);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* Notification Slide */
+.notification {
+    animation: notifSlide 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes notifSlide {
+    0% {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+
+    100% {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Progress Bar Fill Animation */
+.progress-fill-anim {
+    transition: width 0.3s ease;
+}
+
+/* Item Bounce in Inventory */
+.inv-item {
+    animation: itemAppear 0.3s ease;
+}
+
+@keyframes itemAppear {
+    0% {
+        transform: scale(0);
+        opacity: 0;
+    }
+
+    70% {
+        transform: scale(1.1);
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* Clouds */
+.cloud {
+    position: absolute;
+    background: rgba(255,255,255,0.8);
+    border-radius: 50px;
+    opacity: 0.6;
+    animation: cloudMove linear infinite;
+    pointer-events: none;
+}
+
+@keyframes cloudMove {
+    0% {
+        transform: translateX(-100px);
+    }
+
+    100% {
+        transform: translateX(calc(100vw + 100px));
+    }
+}
+
+/* Day/Night Cycle */
+#daynight-overlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 50;
+    transition: background 2s ease;
+}
+
+.night-overlay {
+    background: rgba(10, 20, 60, 0.3);
+}
+
+/* Tooltip */
+.tooltip {
+    position: absolute;
+    background: rgba(0,0,0,0.8);
+    color: white;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 1000;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.tooltip.show {
+    opacity: 1;
+}
