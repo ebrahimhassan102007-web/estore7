@@ -1,94 +1,357 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>E Store - المتجر الإلكتروني</title>
-    <!-- ربط الـ CSS من مجلد css -->
-    <link rel="stylesheet" href="css/style.css">
-    <!-- مكتبة الأيقونات -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#5dbcf0">
+  <title>MY FARM 3D - World & Expansion</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+
+  <!-- Core CSS -->
+  <link rel="stylesheet" href="./css/main.css">
+  <link rel="stylesheet" href="./css/style.css">
+  <link rel="stylesheet" href="./css/animations.css">
+  <link rel="stylesheet" href="./css/farm.css">
+  <link rel="stylesheet" href="./css/hud.css">
+
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #5dbcf0;
+      font-family: 'Tajawal', sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+
+    #game-container {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      z-index: 1;
+    }
+
+    #game-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+      outline: none;
+      touch-action: none;
+      z-index: 2;
+    }
+
+    /* Floating Dynamic Interaction Prompt */
+    #action-prompt {
+      position: fixed;
+      bottom: 112px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: rgba(30, 20, 10, 0.94);
+      border: 3px solid #ffbe44;
+      border-radius: 24px;
+      padding: 10px 22px;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      box-shadow: 0 12px 28px rgba(0,0,0,0.45);
+      backdrop-filter: blur(8px);
+      z-index: 1200;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    #action-prompt.visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+      pointer-events: auto;
+    }
+
+    #action-prompt .prompt-info {
+      display: flex;
+      flex-direction: column;
+      text-align: right;
+    }
+
+    #action-prompt .prompt-title {
+      font-size: 15px;
+      font-weight: 800;
+      color: #ffd54f;
+    }
+
+    #action-prompt .prompt-desc {
+      font-size: 12px;
+      font-weight: 700;
+      color: #e0e0e0;
+    }
+
+    #action-prompt .prompt-btn {
+      background: linear-gradient(180deg, #79d63c 0%, #46961a 100%);
+      border: 2px solid #fff;
+      border-radius: 16px;
+      color: #fff;
+      padding: 8px 18px;
+      font-size: 14px;
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      transition: transform 0.1s;
+    }
+
+    #action-prompt .prompt-btn:active {
+      transform: scale(0.92);
+    }
+
+    /* Modal Purchase Confirmation */
+    #purchase-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+      backdrop-filter: blur(5px);
+    }
+
+    #purchase-modal.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-card {
+      background: linear-gradient(180deg, #fcedc9 0%, #e6cb9d 100%);
+      border: 4px solid #814c1e;
+      border-radius: 24px;
+      padding: 24px 20px;
+      width: 90%;
+      max-width: 330px;
+      text-align: center;
+      box-shadow: 0 16px 36px rgba(0,0,0,0.45);
+    }
+
+    .modal-card h3 {
+      font-size: 19px;
+      font-weight: 900;
+      color: #5a2e0a;
+      margin-bottom: 8px;
+    }
+
+    .modal-card p {
+      font-size: 13px;
+      font-weight: 700;
+      color: #6a3e1b;
+      margin-bottom: 16px;
+    }
+
+    .modal-card .price-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #743e18;
+      border: 2px solid #ffbe44;
+      padding: 6px 16px;
+      border-radius: 999px;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 900;
+      margin-bottom: 18px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+    }
+
+    .modal-actions button {
+      flex: 1;
+      padding: 10px 0;
+      font-size: 14px;
+      font-weight: 900;
+      border-radius: 14px;
+      border: 2px solid #fff;
+      cursor: pointer;
+    }
+
+    .btn-confirm-buy {
+      background: linear-gradient(180deg, #79d63c 0%, #46961a 100%);
+      color: #fff;
+    }
+
+    .btn-cancel-buy {
+      background: linear-gradient(180deg, #e53935 0%, #b71c1c 100%);
+      color: #fff;
+    }
+
+    /* Floating Feedback Text */
+    .floating-feedback {
+      position: fixed;
+      font-weight: 900;
+      font-size: 20px;
+      pointer-events: none;
+      z-index: 3000;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.5);
+      animation: floatUpAnim 1.3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    }
+
+    @keyframes floatUpAnim {
+      0% { opacity: 0; transform: translateY(0) scale(0.7); }
+      20% { opacity: 1; transform: translateY(-20px) scale(1.15); }
+      80% { opacity: 1; transform: translateY(-60px) scale(1); }
+      100% { opacity: 0; transform: translateY(-90px) scale(0.85); }
+    }
+
+    /* Loading Screen */
+    #loading-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      background: linear-gradient(180deg, #5dbcf0 0%, #dff3ff 50%, #62a832 100%);
+      color: #fff;
+      transition: opacity 0.4s ease, visibility 0.4s ease;
+    }
+
+    #loading-screen.fade-out {
+      opacity: 0 !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+    }
+
+    #loading-screen .loading-card {
+      text-align: center;
+      padding: 30px 24px;
+      border-radius: 24px;
+      background: rgba(35, 65, 30, 0.45);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
+      max-width: 90vw;
+      width: 300px;
+    }
+
+    #loading-screen .loading-icon {
+      font-size: 50px;
+      margin-bottom: 10px;
+      animation: bounce 1.4s infinite ease-in-out;
+    }
+
+    #loading-screen h1 {
+      margin: 0 0 6px;
+      font-size: 28px;
+      font-weight: 900;
+    }
+
+    #loading-screen p {
+      margin: 0;
+      font-size: 13px;
+      opacity: 0.95;
+    }
+
+    #loading-screen .loading-bar {
+      width: 100%;
+      height: 8px;
+      margin-top: 20px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.35);
+    }
+
+    #loading-screen .loading-fill {
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: #ffd54f;
+      animation: loadProgress 1.0s ease forwards;
+    }
+
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+
+    @keyframes loadProgress {
+      0% { width: 10%; }
+      50% { width: 60%; }
+      100% { width: 100%; }
+    }
+  </style>
+
+  <!-- Three.js Module Importmap -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
 </head>
 <body>
-    <header>
-        <div class="logo">
-            <span>E Store</span>
-        </div>
-        
-        <input type="text" placeholder="ابحث عن منتج..." class="search">
-        
-        <nav>
-            <div class="dropdown">
-                <a href="#" class="nav-category-link" data-category="all">الرئيسية</a>
-            </div>
-            
-            <div class="dropdown">
-                <a href="#" class="nav-category-link" data-category="men">رجالي</a>
-                <div class="dropdown-content">
-                    <a href="#" class="nav-category-link" data-category="men">جميع ملابس الرجال</a>
-                </div>
-            </div>
-            
-            <div class="dropdown">
-                <a href="#" class="nav-category-link" data-category="women">نسائي</a>
-                <div class="dropdown-content">
-                    <a href="#" class="nav-category-link" data-category="women">جميع ملابس النساء</a>
-                </div>
-            </div>
-            
-            <div class="dropdown">
-                <a href="#" class="nav-category-link" data-category="kids">أطفال</a>
-                <div class="dropdown-content">
-                    <a href="#" class="nav-category-link" data-category="kids">جميع ملابس الأطفال</a>
-                </div>
-            </div>
-            
-            <div class="dropdown">
-                <a href="#" class="nav-category-link" data-category="offers">العروض</a>
-            </div>
-        </nav>
-        
-        <div class="icons">
-            <button><i class="fas fa-search"></i></button>
-            <button><i class="fas fa-user"></i></button>
-            <!-- زر السلة وموقعه العداد -->
-            <button class="cart-btn" style="position: relative;">
-                <i class="fas fa-shopping-cart"></i>
-                <span id="cart-count">0</span>
-            </button>
-        </div>
-    </header>
+  <div id="game-container">
+    <canvas id="game-canvas" aria-label="MY FARM 3D"></canvas>
 
-    <section class="hero">
-        <h1>أحدث صيحات الموضة</h1>
-        <p>خصومات تصل إلى 50%</p>
-        <button>تسوق الآن</button>
-    </section>
-
-    <section class="best-products">
-        <!-- عنوان القسم بيتغير تلقائياً حسب الاختيار -->
-        <h2 id="section-title">أفضل المنتجات</h2>
-        <div class="products">
-            <!-- المنتجات تُعرض ديناميكيًا عبر JavaScript -->
-        </div>
-    </section>
-
-    <!-- نافذة سلة المشتريات -->
-    <div id="cart-modal" class="modal">
-        <div class="modal-content">
-            <span class="close-btn" id="close-cart">&times;</span>
-            <h2>سلة المشتريات</h2>
-            <div id="cart-items" style="margin: 20px 0;">
-                <!-- المنتجات ستظهر هنا -->
-            </div>
-            <div class="cart-total" style="font-size: 20px; font-weight: bold; margin: 15px 0;">
-                الإجمالي: <span id="cart-total-price">0</span> ج.م
-            </div>
-            <button class="cart" style="width: 100%;">إتمام الشراء</button>
-        </div>
+    <!-- Context Interaction Prompt (Purchase Land or Use Axe) -->
+    <div id="action-prompt">
+      <div class="prompt-info">
+        <span class="prompt-title" id="prompt-title">🌾 أرض جديدة</span>
+        <span class="prompt-desc" id="prompt-desc">السعر: 💰 100</span>
+      </div>
+      <button type="button" class="prompt-btn" id="btn-prompt-action">تفاعل</button>
     </div>
 
-    <!-- ربط الـ JS من مجلد js -->
-    <script src="js/script.js"></script>
+    <!-- Purchase Confirmation Modal -->
+    <div id="purchase-modal">
+      <div class="modal-card">
+        <h3>توسعة المزرعة</h3>
+        <p>هل ترغب في شراء هذه الأرض لتوسيع حدود مزرعتك؟</p>
+        <div class="price-badge">
+          <span>💰 100 كوينز</span>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-confirm-buy" id="btn-confirm-buy">شراء</button>
+          <button type="button" class="btn-cancel-buy" id="btn-cancel-buy">إلغاء</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+      <div class="loading-card">
+        <div class="loading-icon">🌾</div>
+        <h1>MY FARM 3D</h1>
+        <p>جاري بناء عالم المزرعة والأراضي...</p>
+        <div class="loading-bar">
+          <div class="loading-fill"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./js/main.js"></script>
 </body>
 </html>

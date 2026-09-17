@@ -1,0 +1,229 @@
+/* ===== Farm Grid & World ===== */
+
+#farm-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    padding: 16px;
+    max-width: 600px;
+    margin: 0 auto;
+    padding-bottom: 100px;
+}
+
+.farm-tile {
+    aspect-ratio: 1;
+    background: linear-gradient(135deg, #8D6E63 0%, #6D4C41 100%);
+    border-radius: var(--radius-sm);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.1);
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    border: 2px solid transparent;
+    overflow: hidden;
+}
+
+.farm-tile:active {
+    transform: scale(0.95);
+}
+
+.farm-tile.empty {
+    background: linear-gradient(135deg, #A1887F 0%, #8D6E63 100%);
+}
+
+.farm-tile.empty::after {
+    content: '+';
+    color: rgba(255,255,255,0.3);
+    font-size: 24px;
+    font-weight: 300;
+}
+
+.farm-tile.locked {
+    background: linear-gradient(135deg, #BDBDBD 0%, #9E9E9E 100%);
+    cursor: not-allowed;
+}
+
+.farm-tile.locked::after {
+    content: '🔒';
+    font-size: 20px;
+    opacity: 0.6;
+}
+
+.farm-tile.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(255,152,0,0.3), var(--shadow);
+}
+
+.crop-stage {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+    transition: all 0.5s ease;
+}
+
+.crop-seed { font-size: 16px; filter: grayscale(0.3); }
+.crop-sprout { font-size: 24px; }
+.crop-growing { font-size: 30px; }
+
+.crop-ready {
+    font-size: 38px;
+    animation: cropReady 2s infinite;
+    filter: drop-shadow(0 0 6px rgba(255,215,0,0.6));
+}
+
+.crop-progress {
+    position: absolute;
+    bottom: 4px;
+    left: 4px;
+    right: 4px;
+    height: 4px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.crop-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #4CAF50, #8BC34A);
+    border-radius: 2px;
+    transition: width 0.5s linear;
+}
+
+.farm-building {
+    position: absolute;
+    font-size: 40px;
+    filter: drop-shadow(0 3px 6px rgba(0,0,0,0.2));
+    transition: transform 0.2s;
+    cursor: pointer;
+}
+
+.farm-building:active {
+    transform: scale(0.92);
+}
+
+.building-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    background: var(--danger);
+    color: white;
+    font-size: 10px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+}
+
+.farm-animal {
+    position: absolute;
+    font-size: 32px;
+    transition: transform 0.3s;
+    cursor: pointer;
+}
+
+.farm-animal.hungry {
+    animation: hungryShake 1s infinite;
+    filter: grayscale(0.5);
+}
+
+.farm-animal.ready {
+    animation: animalReady 1.5s infinite;
+}
+
+.animal-hunger-bar {
+    position: absolute;
+    bottom: -6px;
+    left: 10%;
+    width: 80%;
+    height: 3px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 2px;
+}
+
+.animal-hunger-fill {
+    height: 100%;
+    background: #4CAF50;
+    border-radius: 2px;
+    transition: width 0.3s;
+}
+
+.animal-hunger-fill.low {
+    background: var(--danger);
+}
+
+.farm-decoration {
+    position: absolute;
+    font-size: 28px;
+    pointer-events: none;
+}
+
+.expansion-zone {
+    grid-column: span 6;
+    background: linear-gradient(135deg, #FFF8E1, #FFECB3);
+    border: 2px dashed var(--accent);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    text-align: center;
+    margin: 8px 0;
+}
+
+.expansion-zone h3 {
+    color: var(--accent);
+    font-size: 16px;
+    margin-bottom: 8px;
+}
+
+.expansion-zone .cost {
+    font-size: 13px;
+    color: var(--text-light);
+    margin-bottom: 12px;
+}
+
+.expansion-zone button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 20px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.farm-tile.road {
+    background: linear-gradient(135deg, #D7CCC8, #BCAAA4);
+}
+
+.farm-tile.water {
+    background: linear-gradient(135deg, #4FC3F7, #29B6F6);
+    animation: waterShimmer 3s infinite;
+}
+
+@keyframes cropReady {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+@keyframes hungryShake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-3px); }
+    75% { transform: translateX(3px); }
+}
+
+@keyframes animalReady {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+}
+
+@keyframes waterShimmer {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+}
