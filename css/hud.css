@@ -1,0 +1,286 @@
+/* ==========================================================================
+   MY FARM 3D - PREMIUM MOBILE HUD STYLING
+   ========================================================================== */
+:root {
+  --wood-panel-bg: linear-gradient(180deg, #fcedc9 0%, #e6cb9d 100%);
+  --wood-panel-border: #814c1e;
+  --gold-accent: #ffb800;
+  --gem-accent: #00d2ff;
+  --green-accent: #5db836;
+  --font-tajawal: 'Tajawal', sans-serif;
+}
+
+#game-hud-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1000;
+  font-family: var(--font-tajawal);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#game-hud-overlay * {
+  box-sizing: border-box;
+  pointer-events: auto;
+}
+
+/* ================= TOP HUD CONTAINER ================= */
+.hud-top-bar {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  left: max(10px, env(safe-area-inset-left));
+  right: max(10px, env(safe-area-inset-right));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.hud-level-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--wood-panel-bg);
+  border: 2px solid var(--wood-panel-border);
+  border-radius: 18px;
+  padding: 4px 10px 4px 8px;
+  min-width: 135px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.7);
+}
+
+.hud-level-badge {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #76d941, #3f8618);
+  border: 2px solid #fff;
+  color: #fff;
+  font-weight: 900;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+  flex-shrink: 0;
+}
+
+.hud-xp-box {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 2px;
+}
+
+.hud-xp-track {
+  width: 100%;
+  height: 8px;
+  background: rgba(70, 35, 15, 0.45);
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.35);
+}
+
+.hud-xp-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #86e036, #48a315);
+  width: 25%;
+  border-radius: inherit;
+  transition: width 0.35s ease;
+}
+
+.hud-xp-text {
+  font-size: 9px;
+  font-weight: 800;
+  color: #5a2e0a;
+  text-align: right;
+  direction: ltr;
+}
+
+.hud-currencies {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hud-currency-item {
+  background: rgba(25, 15, 5, 0.88);
+  border: 2px solid #ffbe44;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+  border-radius: 999px;
+  padding: 3px 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #fff;
+  font-weight: 900;
+  font-size: 13px;
+  min-width: 68px;
+  justify-content: center;
+}
+
+.hud-currency-item.gems {
+  border-color: #00d2ff;
+}
+
+.hud-time-pill {
+  background: rgba(20, 38, 55, 0.88);
+  border: 2px solid #64b5f6;
+  border-radius: 16px;
+  padding: 3px 9px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+  color: #fff;
+  min-width: 74px;
+}
+
+.hud-time-pill .clock {
+  font-size: 11px;
+  font-weight: 900;
+  color: #fff;
+}
+
+.hud-time-pill .season {
+  font-size: 9px;
+  font-weight: 700;
+  color: #a5d6a7;
+}
+
+/* ================= MISSIONS PANEL ================= */
+.hud-missions-panel {
+  position: absolute;
+  top: 80px;
+  left: max(12px, env(safe-area-inset-left));
+  width: 200px;
+  background: linear-gradient(180deg, #fcedc9 0%, #e6cb9d 100%);
+  border: 3px solid #814c1e;
+  border-radius: 16px;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+  padding: 8px 10px;
+  direction: rtl;
+  pointer-events: auto;
+  z-index: 900;
+}
+
+.missions-header {
+  text-align: center;
+  font-size: 14px;
+  font-weight: 900;
+  color: #5a2e0a;
+  border-bottom: 2px dashed #b98b58;
+  padding-bottom: 4px;
+  margin-bottom: 6px;
+}
+
+.missions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.missions-list::-webkit-scrollbar {
+  display: none;
+}
+
+/* ================= BOTTOM HOTBAR ================= */
+.hud-bottom-hotbar {
+  position: absolute;
+  bottom: max(10px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--wood-panel-bg);
+  border: 3px solid var(--wood-panel-border);
+  border-radius: 22px;
+  padding: 6px 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 96vw;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.hud-bottom-hotbar::-webkit-scrollbar {
+  display: none;
+}
+
+.hotbar-slot {
+  width: 50px;
+  height: 50px;
+  background: linear-gradient(180deg, #743e18 0%, #44220b 100%);
+  border: 2px solid #9c5c29;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.12s, border-color 0.12s;
+  flex-shrink: 0;
+  box-shadow: 0 3px 6px rgba(0,0,0,0.35);
+}
+
+.hotbar-slot.selected {
+  border: 3px solid #ffde00;
+  box-shadow: 0 0 12px #ffde00;
+  transform: scale(1.08);
+}
+
+.slot-icon {
+  font-size: 26px;
+}
+
+.slot-badge {
+  position: absolute;
+  bottom: 2px;
+  right: 3px;
+  font-size: 10px;
+  font-weight: 900;
+  color: #fff;
+  background: rgba(0,0,0,0.65);
+  padding: 0 5px;
+  border-radius: 8px;
+}
+
+/* ================= VIRTUAL JOYSTICK ================= */
+.hud-joystick-zone {
+  position: absolute;
+  bottom: max(22px, env(safe-area-inset-bottom));
+  left: max(18px, env(safe-area-inset-left));
+  width: 126px;
+  height: 126px;
+  touch-action: none;
+}
+
+.joystick-base {
+  width: 100%;
+  height: 100%;
+  background: rgba(25, 20, 15, 0.38);
+  border: 3px solid rgba(255, 255, 255, 0.55);
+  border-radius: 50%;
+  position: relative;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+  backdrop-filter: blur(4px);
+}
+
+.joystick-thumb {
+  width: 50px;
+  height: 50px;
+  background: radial-gradient(circle at 35% 35%, #ffffff, #cfcfcf);
+  border: 2px solid #5a3a22;
+  border-radius: 50%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+  pointer-events: none;
+}
