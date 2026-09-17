@@ -22,7 +22,8 @@ import { ProductionPanel } from './ui/ProductionPanel.js';
 import { Toast } from './ui/Toast.js';
 import { SoundFX } from './ui/SoundFX.js';
 import { ProductionYard } from './world/ProductionYard.js';
-import HUD from './ui/HUD.js';
+import UIManager from './ui/UIManager.js';
+import { Environment } from './world/Environment.js';
 
 /* ============================================================
    CAMERA & ENGINE CONFIGURATION (Ground Focused Framing)
@@ -392,8 +393,8 @@ class MyFarmApp {
             this.createScene();
             this.createCamera();
             this.createLighting();
-            this.createSky();
-            this.createFarmEnvironment();
+            this.environment = new Environment(this.scene);
+            this.ground = this.environment.group;
 
             try {
                 await Promise.race([
@@ -437,7 +438,7 @@ class MyFarmApp {
 
             // Mount Modern Compact HUD
             try {
-                this.hud = new HUD({
+                this.hud = new UIManager({
                     gameState: GameState,
                     eventBus: Events,
                     enableJoystick: true,
@@ -1450,6 +1451,7 @@ class MyFarmApp {
     update(delta) {
         FarmingSystem.updateGrowth();
         this.productionYard?.update(delta, this.clock.getElapsedTime());
+        this.environment?.update(delta, this.clock.getElapsedTime());
 
         this.clouds.forEach((cloud) => {
             cloud.position.x += delta * 0.8;
