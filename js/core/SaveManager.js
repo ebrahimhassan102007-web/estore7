@@ -372,7 +372,11 @@ class SaveManagerService {
             Events.on('crop:planted', () => this.markDirty()),
             Events.on('crop:harvested', () => this.save()),
             Events.on('land:purchased', () => this.save()),
-            Events.on('land:prepared', () => this.save())
+            Events.on('land:prepared', () => this.save()),
+            // حفظ فوري لقائمة الإنتاج (بدء/استلام/إلغاء)
+            Events.on('production:started', () => this.save()),
+            Events.on('production:completed', () => this.save()),
+            Events.on('production:cancelled', () => this.save())
         );
 
         this._installLifecycleHandlers();

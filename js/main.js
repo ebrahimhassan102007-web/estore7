@@ -18,6 +18,10 @@ import { FarmingSystem, CROPS_DEFINITIONS } from './systems/FarmingSystem.js';
 import { ProductionSystem } from './systems/ProductionSystem.js';
 import { getBuilding, STARTER_KIT } from './data/GameData.js';
 import { uuid } from './utils/Utils.js';
+import { ProductionPanel } from './ui/ProductionPanel.js';
+import { Toast } from './ui/Toast.js';
+import { SoundFX } from './ui/SoundFX.js';
+import { ProductionYard } from './world/ProductionYard.js';
 import HUD from './ui/HUD.js';
 
 /* ============================================================
@@ -335,6 +339,16 @@ class MyFarmApp {
         this.fieldMeshes = new Map();
         this.activeTarget = null; // { type: 'field' | 'slot', fieldId, slotIndex, data }
 
+        // 🏭 طبقة الإنتاج (3D + UI + مؤثرات)
+        this.productionYard = null;
+        this.productionPanel = null;
+        this.toast = null;
+        this.soundFX = null;
+
+        // 🎯 تركيز الكاميرا المؤقت على مبنى
+        this.cameraFocus = { active: false, x: 0, z: 0, until: 0 };
+        this._tapStart = null;
+
         this.cameraDistance = CONFIG.camera.defaultDistance;
         this.cameraYaw = 0.0;
         this.cameraPitch = CONFIG.camera.defaultPitch;
@@ -404,6 +418,15 @@ class MyFarmApp {
 
             this.createPlayer();
             this.buildFarmFields();
+
+            // 🏭 مباني الإنتاج ثلاثية الأبعاد (تتزامن مع الحالة تلقائيًا)
+            try {
+                this.productionYard = new ProductionYard({ scene: this.scene });
+                this.productionYard.syncFromState(GameState.get('farm.buildings') || []);
+            } catch (e) {
+                console.warn('[MY FARM] ProductionYard notice:', e);
+            }
+
             this.setupCameraTouch();
             this.setupUnifiedPromptUI();
 
@@ -430,6 +453,25 @@ class MyFarmApp {
                 console.warn('[MY FARM] HUD Mount Notice:', e);
             }
 
+            // 🖥️ لوحة الإنتاج + التنبيهات + المؤثرات الصوتية
+            try {
+                this.toast = new Toast().mount(document.body);
+                this.soundFX = new SoundFX({ gameState: GameState });
+
+                this.productionPanel = new ProductionPanel({
+                    events: Events,
+                    gameState: GameState,
+                    productionSystem: ProductionSystem,
+                    soundFX: this.soundFX,
+                    toast: this.toast,
+                    projector: (x, z, h) => this.projectToScreen(x, z, h),
+                    getBuildingWorldPos: (id) => this.productionYard?.getWorldPos(id) || null
+                });
+                this.productionPanel.mount(document.body);
+            } catch (e) {
+                console.warn('[MY FARM] Production UI notice:', e);
+            }
+
             try {
                 SaveManager.startAutoSave();
                 Time.start();
@@ -453,6 +495,7 @@ class MyFarmApp {
                 console.log(`[PRODUCTION] 📦 تم الاستلام: ${output.amount}× ${output.item}`));
             Events.on('inventory:full', () =>
                 console.warn('[PRODUCTION] ⚠️ المخزن ممتلئ — قم بترقية السعة!'));
+            Events.on('production:building-selected', (hit) => this.focusOnBuilding(hit));
 
             this.initialized = true;
             this.hideLoading();
@@ -464,7 +507,9 @@ class MyFarmApp {
                 GameState,
                 Events,
                 FarmingSystem,
-                ProductionSystem
+                ProductionSystem,
+                ProductionYard: this.productionYard,
+                ProductionPanel: this.productionPanel
             };
 
             Events.emit('game:ready', this);
@@ -485,6 +530,14 @@ class MyFarmApp {
         const isFreshFarm = buildings.length === 0;
         let changed = false;
 
+        // 🔄 ترحيل: إضافة مواقع البناء للحفوظات القديمة
+        for (const b of buildings) {
+            if (!b.position && STARTER_KIT.positions?.[b.typeId]) {
+                b.position = { ...STARTER_KIT.positions[b.typeId] };
+                changed = true;
+            }
+        }
+
         for (const typeId of STARTER_KIT.buildings) {
             // لا تكرار — إن وُجد المبنى مسبقًا نتخطّاه
             if (buildings.some(b => b.typeId === typeId)) continue;
@@ -501,6 +554,9 @@ class MyFarmApp {
                 status: 'built',
                 queueLimit: def.queueLimit || 3,
                 productionQueue: [],
+                position: STARTER_KIT.positions?.[typeId]
+                    ? { ...STARTER_KIT.positions[typeId] }
+                    : { x: 0, z: 4.5 },
                 placedAt: Date.now()
             });
             changed = true;
@@ -1221,6 +1277,56 @@ class MyFarmApp {
         if (e.code === 'KeyD' || e.code === 'ArrowRight') this.keys.right = false;
     }
 
+    /* ============================================================
+       👆 اختيار مباني الإنتاج باللمس + تركيز الكاميرا
+       ============================================================ */
+
+    /** نقرة خفيفة على الكانفس (بدون سحب) = محاولة اختيار مبنى */
+    _maybeCanvasTap(e) {
+        if (!this._tapStart || this._tapStart.pointerId !== e.pointerId) return;
+        const start = this._tapStart;
+        this._tapStart = null;
+
+        const dist = Math.hypot(e.clientX - start.x, e.clientY - start.y);
+        const held = performance.now() - start.t;
+        if (dist > 12 || held > 420) return; // كان سحب كاميرا — تجاهل
+
+        this.handleTap(e.clientX, e.clientY);
+    }
+
+    handleTap(clientX, clientY) {
+        if (!this.productionYard || !this.camera) return;
+        const hit = this.productionYard.pick(clientX, clientY, this.camera);
+        if (hit) {
+            Events.emit('production:building-selected', hit);
+        } else {
+            Events.emit('production:deselect');
+        }
+    }
+
+    /** تركيز مؤقت للكاميرا على المبنى المختار (~1.9 ثانية) */
+    focusOnBuilding(hit) {
+        if (!hit || !this.clock) return;
+        this.cameraFocus.x = hit.x;
+        this.cameraFocus.z = hit.z;
+        this.cameraFocus.until = this.clock.getElapsedTime() + 1.9;
+        this.cameraFocus.active = true;
+        this.productionYard?.setSelected(hit.instanceId);
+    }
+
+    /** إسقاط إحداثيات العالم على الشاشة (للفقاعات العائمة) */
+    projectToScreen(x, z, height = 2.3) {
+        if (!this.camera) return { x: 0, y: 0, visible: false };
+        const v = new THREE.Vector3(x, height, z).project(this.camera);
+        const visible =
+            v.z < 1 && Math.abs(v.x) <= 1.15 && Math.abs(v.y) <= 1.15;
+        return {
+            x: (v.x * 0.5 + 0.5) * window.innerWidth,
+            y: (-v.y * 0.5 + 0.5) * window.innerHeight,
+            visible
+        };
+    }
+
     setupCameraTouch() {
         if (!this.canvas) return;
 
@@ -1243,8 +1349,14 @@ class MyFarmApp {
                 this.cameraTouchId = e.pointerId;
                 this.touchLastX = e.clientX;
                 this.touchLastY = e.clientY;
+                // 👆 تتبّع النقرة الخفيفة (Tap) لاختيار المباني
+                this._tapStart = {
+                    x: e.clientX, y: e.clientY,
+                    t: performance.now(), pointerId: e.pointerId
+                };
             } else if (this.activeTouches.size === 2) {
                 this.touchCameraActive = false;
+                this._tapStart = null; // إيماءة متعددة الأصابع ليست نقرة
                 this.pinchStartDistance = getTouchDistance();
                 this.pinchStartCameraDistance = this.cameraDistance;
             }
@@ -1284,6 +1396,7 @@ class MyFarmApp {
 
         const releasePointer = (e) => {
             if (!this.activeTouches.has(e.pointerId)) return;
+            this._maybeCanvasTap(e);
             this.activeTouches.delete(e.pointerId);
 
             if (this.activeTouches.size === 1) {
@@ -1336,6 +1449,7 @@ class MyFarmApp {
 
     update(delta) {
         FarmingSystem.updateGrowth();
+        this.productionYard?.update(delta, this.clock.getElapsedTime());
 
         this.clouds.forEach((cloud) => {
             cloud.position.x += delta * 0.8;
@@ -1385,20 +1499,38 @@ class MyFarmApp {
                 this.lights.sun.target.updateMatrixWorld();
             }
 
-            // كاميرا طرف ثالث متوازنة مع المشهد
-            const horizontalDist = this.cameraDistance * Math.cos(this.cameraPitch);
-            const verticalDist = this.cameraDistance * Math.sin(this.cameraPitch);
+            if (this.cameraFocus.active && this.clock.getElapsedTime() < this.cameraFocus.until) {
+                // 🎯 تركيز سلس على مبنى إنتاج محدد
+                const fx = this.cameraFocus.x;
+                const fz = this.cameraFocus.z;
+                const focusDist = Math.min(this.cameraDistance, 6.0);
+                const fh = focusDist * Math.cos(this.cameraPitch);
+                const fv = focusDist * Math.sin(this.cameraPitch) + 2.1;
 
-            const camX = this.player.root.position.x + Math.sin(this.cameraYaw) * horizontalDist;
-            const camZ = this.player.root.position.z + Math.cos(this.cameraYaw) * horizontalDist;
-            const camY = this.player.root.position.y + CONFIG.camera.targetHeight + verticalDist;
+                this.cameraTargetPosition.set(
+                    fx + Math.sin(this.cameraYaw) * fh,
+                    Math.max(1.2, fv),
+                    fz + Math.cos(this.cameraYaw) * fh
+                );
+                this.cameraLookTarget.set(fx, 1.05, fz);
+            } else {
+                this.cameraFocus.active = false;
 
-            this.cameraTargetPosition.set(camX, Math.max(0.6, camY), camZ);
-            this.cameraLookTarget.set(
-                this.player.root.position.x,
-                this.player.root.position.y + CONFIG.camera.targetHeight,
-                this.player.root.position.z
-            );
+                // كاميرا طرف ثالث متوازنة مع المشهد
+                const horizontalDist = this.cameraDistance * Math.cos(this.cameraPitch);
+                const verticalDist = this.cameraDistance * Math.sin(this.cameraPitch);
+
+                const camX = this.player.root.position.x + Math.sin(this.cameraYaw) * horizontalDist;
+                const camZ = this.player.root.position.z + Math.cos(this.cameraYaw) * horizontalDist;
+                const camY = this.player.root.position.y + CONFIG.camera.targetHeight + verticalDist;
+
+                this.cameraTargetPosition.set(camX, Math.max(0.6, camY), camZ);
+                this.cameraLookTarget.set(
+                    this.player.root.position.x,
+                    this.player.root.position.y + CONFIG.camera.targetHeight,
+                    this.player.root.position.z
+                );
+            }
 
             const lerpFactor = 1.0 - Math.exp(-delta * 9.5);
             this.camera.position.lerp(this.cameraTargetPosition, lerpFactor);

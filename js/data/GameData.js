@@ -122,6 +122,7 @@ export const BUILDINGS = Object.freeze({
     grain_mill: {
         id: 'grain_mill',
         name: 'طاحونة الحبوب',
+        epithet: 'نسيم القمح',
         nameEn: 'Grain Mill',
         icon: '🌾',
         category: 'production',
@@ -137,6 +138,7 @@ export const BUILDINGS = Object.freeze({
     bakery: {
         id: 'bakery',
         name: 'المخبز',
+        epithet: 'فرن الفجر',
         nameEn: 'Bakery',
         icon: '🍞',
         category: 'production',
@@ -466,7 +468,12 @@ export const TOOLS = Object.freeze({
 export const STARTER_KIT = Object.freeze({
     buildings: ['grain_mill', 'bakery'],
     items: { wheat: 6, corn: 4, carrot: 2 },
-    recipes: ['flour', 'bread']
+    recipes: ['flour', 'bread'],
+    // مواقع البناء على الشبكة (بين الحقول والأراضي الجنوبية)
+    positions: {
+        grain_mill: { x: -3.8, z: 4.5 },
+        bakery:     { x:  3.8, z: 4.5 }
+    }
 });
 
 /* ============================================================
