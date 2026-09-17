@@ -5,19 +5,20 @@
  */
 const PRESENTATION_DEFAULTS = {
   player: {
-    coins: 350,
-    gems: 10,
-    level: 1,
-    xp: 25,
-    xpToNext: 100
+    coins: 15230,
+    gems: 245,
+    level: 12,
+    xp: 620,
+    xpToNext: 1500
   },
   time: {
     clock: '08:00 AM',
     season: 'الربيع',
-    day: 1
+    day: 5
   },
   hotbar: [
     { id: 'axe', name: 'فأس', icon: '🪓', type: 'tool', count: null },
+    { id: 'pickaxe', name: 'معول', icon: '⛏️', type: 'tool', count: null },
     { id: 'water_can', name: 'مرشة مياه', icon: '💧', type: 'tool', count: null },
     { id: 'wheat_seed', name: 'بذور قمح', icon: '🌾', type: 'seed', cropType: 'wheat', count: 12 },
     { id: 'corn_seed', name: 'بذور ذرة', icon: '🌽', type: 'seed', cropType: 'corn', count: 8 },
@@ -105,6 +106,10 @@ export class HUD {
         </div>
       </header>
 
+      <aside class="hud-utility-stack" aria-label="أدوات المزرعة">
+        <button aria-label="القائمة">☰</button><button aria-label="الحقيبة">🎒</button><button aria-label="المتجر">🏪</button><button aria-label="الخريطة">🗺️</button>
+      </aside>
+      <div class="hud-action-stack"><button class="jump-button" aria-label="قفز">⬆</button><button class="harvest-button" aria-label="تفاعل">🤚</button></div>
       <!-- LEFT SIDE: Missions / Tasks Board -->
       <div class="hud-missions-panel" id="hud-missions-panel">
         <div class="missions-header">📋 المهام</div>
