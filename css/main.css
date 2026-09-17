@@ -1,0 +1,977 @@
+/* ============================================================
+   MY FARM 3D — MAIN CSS
+   Global layout & application structure
+   ============================================================ */
+
+/* ============================================================
+   RESET
+   ============================================================ */
+
+*,
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+    width: 100%;
+    height: 100%;
+    min-width: 100%;
+    min-height: 100%;
+
+    overflow: hidden;
+
+    font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Arial,
+        sans-serif;
+
+    background: #87ceeb;
+
+    color: #ffffff;
+}
+
+body {
+    position: fixed;
+    inset: 0;
+
+    touch-action: manipulation;
+}
+
+/* ============================================================
+   APPLICATION ROOT
+   ============================================================ */
+
+#app {
+    position: fixed;
+    inset: 0;
+
+    width: 100%;
+    height: 100%;
+
+    overflow: hidden;
+
+    background: #87ceeb;
+}
+
+/* ============================================================
+   LOADING SCREEN
+   ============================================================ */
+
+#loading-screen {
+    position: fixed;
+    inset: 0;
+
+    z-index: 10000;
+
+    display: flex;
+    flex-direction: column;
+
+    align-items: center;
+    justify-content: center;
+
+    padding:
+        max(24px, env(safe-area-inset-top))
+        max(24px, env(safe-area-inset-right))
+        max(24px, env(safe-area-inset-bottom))
+        max(24px, env(safe-area-inset-left));
+
+    background: #87ceeb;
+
+    opacity: 1;
+    visibility: visible;
+
+    transition:
+        opacity 0.5s ease,
+        visibility 0.5s ease;
+}
+
+#loading-screen[hidden] {
+    display: none;
+}
+
+#loading-screen.loading-screen-done {
+    opacity: 0;
+    visibility: hidden;
+}
+
+#loading-screen.loading-screen-error {
+    background: #263238;
+}
+
+#loading-text {
+    margin-bottom: 18px;
+
+    text-align: center;
+
+    font-size: 18px;
+    font-weight: 700;
+
+    color: #ffffff;
+}
+
+#loading-progress {
+    width: min(420px, 80vw);
+    height: 14px;
+
+    overflow: hidden;
+
+    border-radius: 999px;
+
+    background: rgba(255, 255, 255, 0.3);
+}
+
+#loading-bar {
+    width: 0%;
+    height: 100%;
+
+    border-radius: inherit;
+
+    background: #ffffff;
+
+    transition: width 0.25s ease;
+}
+
+/* ============================================================
+   GAME CONTAINER
+   ============================================================ */
+
+#game-container {
+    position: fixed;
+    inset: 0;
+
+    width: 100%;
+    height: 100%;
+
+    overflow: hidden;
+
+    background: #87ceeb;
+}
+
+/* ============================================================
+   THREE.JS CANVAS
+   ============================================================ */
+
+#game-canvas {
+    position: absolute;
+
+    inset: 0;
+
+    width: 100% !important;
+    height: 100% !important;
+
+    display: block;
+
+    outline: none;
+
+    z-index: 1;
+}
+
+/* ============================================================
+   GAME UI ROOT
+   ============================================================ */
+
+#game-ui {
+    position: absolute;
+    inset: 0;
+
+    width: 100%;
+    height: 100%;
+
+    overflow: hidden;
+
+    pointer-events: none;
+
+    z-index: 100;
+}
+
+/*
+   UI elements that should receive interaction
+   must explicitly restore pointer-events.
+*/
+
+#game-ui button,
+#game-ui input,
+#game-ui select,
+#game-ui textarea,
+#game-ui a {
+    pointer-events: auto;
+}
+
+/* ============================================================
+   HUD
+   ============================================================ */
+
+#hud {
+    position: absolute;
+
+    top: max(12px, env(safe-area-inset-top));
+    left: 0;
+    right: 0;
+
+    min-height: 70px;
+
+    padding:
+        8px
+        max(12px, env(safe-area-inset-right))
+        8px
+        max(12px, env(safe-area-inset-left));
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    gap: 10px;
+
+    z-index: 200;
+
+    pointer-events: none;
+}
+
+/* ============================================================
+   LEVEL PANEL
+   ============================================================ */
+
+#hud-level-panel {
+    min-width: 150px;
+    max-width: 240px;
+
+    display: flex;
+    flex-direction: column;
+
+    gap: 4px;
+
+    padding: 7px 10px;
+
+    border-radius: 14px;
+
+    background: rgba(0, 0, 0, 0.35);
+
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+#hud-level {
+    font-size: 14px;
+    font-weight: 800;
+
+    color: #ffffff;
+}
+
+#hud-xp-bar {
+    width: 100%;
+    height: 8px;
+
+    overflow: hidden;
+
+    border-radius: 999px;
+
+    background: rgba(255, 255, 255, 0.25);
+}
+
+#hud-xp-fill {
+    width: 0%;
+    height: 100%;
+
+    border-radius: inherit;
+
+    background: #ffca28;
+
+    transition: width 0.3s ease;
+}
+
+#hud-xp-text {
+    font-size: 10px;
+    font-weight: 600;
+
+    color: rgba(255, 255, 255, 0.9);
+
+    text-align: center;
+}
+
+/* ============================================================
+   HUD RESOURCES
+   ============================================================ */
+
+#hud-money,
+#hud-gems {
+    min-width: 72px;
+    min-height: 38px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    gap: 5px;
+
+    padding: 6px 10px;
+
+    border-radius: 999px;
+
+    background: rgba(0, 0, 0, 0.35);
+
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+
+    font-size: 14px;
+    font-weight: 800;
+
+    white-space: nowrap;
+}
+
+#hud-money-value,
+#hud-gems-value {
+    font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   HUD TIME
+   ============================================================ */
+
+#hud-time {
+    min-width: 92px;
+
+    display: flex;
+    flex-direction: column;
+
+    align-items: center;
+    justify-content: center;
+
+    gap: 1px;
+
+    padding: 5px 9px;
+
+    border-radius: 12px;
+
+    background: rgba(0, 0, 0, 0.35);
+
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+#hud-clock {
+    font-size: 14px;
+    font-weight: 800;
+
+    font-variant-numeric: tabular-nums;
+}
+
+#hud-day {
+    font-size: 10px;
+    font-weight: 600;
+
+    opacity: 0.85;
+}
+
+/* ============================================================
+   QUEST LIST
+   ============================================================ */
+
+#quest-list {
+    position: absolute;
+
+    top: 95px;
+    right: max(12px, env(safe-area-inset-right));
+
+    width: min(260px, 42vw);
+
+    display: flex;
+    flex-direction: column;
+
+    gap: 6px;
+
+    z-index: 210;
+
+    pointer-events: auto;
+}
+
+/* ============================================================
+   SIDE MENU
+   ============================================================ */
+
+#side-menu {
+    position: absolute;
+
+    top: 105px;
+    left: max(12px, env(safe-area-inset-left));
+
+    display: flex;
+    flex-direction: column;
+
+    gap: 8px;
+
+    z-index: 220;
+
+    pointer-events: auto;
+}
+
+#side-menu button {
+    width: 44px;
+    height: 44px;
+
+    border: none;
+    border-radius: 12px;
+
+    background: rgba(0, 0, 0, 0.4);
+
+    color: #ffffff;
+
+    font-size: 20px;
+
+    cursor: pointer;
+
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+
+    transition:
+        transform 0.15s ease,
+        background 0.15s ease;
+}
+
+#side-menu button:active {
+    transform: scale(0.92);
+}
+
+/* ============================================================
+   INTERACTION PROMPT
+   ============================================================ */
+
+#interaction-prompt {
+    position: absolute;
+
+    left: 50%;
+    bottom: 130px;
+
+    transform: translateX(-50%);
+
+    max-width: min(90vw, 420px);
+
+    padding: 10px 16px;
+
+    border-radius: 12px;
+
+    background: rgba(0, 0, 0, 0.65);
+
+    color: #ffffff;
+
+    font-size: 14px;
+    font-weight: 700;
+
+    text-align: center;
+
+    opacity: 0;
+    visibility: hidden;
+
+    transition:
+        opacity 0.2s ease,
+        visibility 0.2s ease;
+
+    z-index: 300;
+
+    pointer-events: none;
+}
+
+#interaction-prompt.visible,
+#interaction-prompt.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* ============================================================
+   MOBILE CONTROLS
+   ============================================================ */
+
+#mobile-controls {
+    position: absolute;
+
+    inset: 0;
+
+    z-index: 400;
+
+    pointer-events: none;
+}
+
+/* ============================================================
+   D-PAD
+   ============================================================ */
+
+#dpad {
+    position: absolute;
+
+    left: max(18px, env(safe-area-inset-left));
+    bottom: max(24px, env(safe-area-inset-bottom));
+
+    width: 150px;
+    height: 150px;
+
+    pointer-events: auto;
+}
+
+#dpad button {
+    position: absolute;
+
+    width: 48px;
+    height: 48px;
+
+    border: none;
+    border-radius: 14px;
+
+    background: rgba(0, 0, 0, 0.45);
+
+    color: #ffffff;
+
+    font-size: 20px;
+    font-weight: 800;
+
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+
+    cursor: pointer;
+
+    touch-action: manipulation;
+
+    transition:
+        transform 0.1s ease,
+        background 0.1s ease;
+}
+
+#dpad button:active {
+    transform: scale(0.9);
+
+    background: rgba(0, 0, 0, 0.65);
+}
+
+#dpad-up {
+    top: 0;
+    left: 51px;
+}
+
+#dpad-left {
+    top: 51px;
+    left: 0;
+}
+
+#dpad-right {
+    top: 51px;
+    right: 0;
+}
+
+#dpad-down {
+    bottom: 0;
+    left: 51px;
+}
+
+/* ============================================================
+   ACTION BUTTONS
+   ============================================================ */
+
+#action-buttons {
+    position: absolute;
+
+    right: max(18px, env(safe-area-inset-right));
+    bottom: max(24px, env(safe-area-inset-bottom));
+
+    display: flex;
+    align-items: flex-end;
+
+    gap: 10px;
+
+    pointer-events: auto;
+}
+
+#action-buttons button {
+    width: 58px;
+    height: 58px;
+
+    border: none;
+    border-radius: 50%;
+
+    background: rgba(0, 0, 0, 0.45);
+
+    color: #ffffff;
+
+    font-size: 13px;
+    font-weight: 800;
+
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+
+    cursor: pointer;
+
+    touch-action: manipulation;
+}
+
+#action-buttons button:active {
+    transform: scale(0.92);
+}
+
+/* ============================================================
+   FARM SIGN
+   ============================================================ */
+
+#farm-sign {
+    position: absolute;
+
+    left: 50%;
+    bottom: 24px;
+
+    transform: translateX(-50%);
+
+    padding: 8px 14px;
+
+    border-radius: 10px;
+
+    background: rgba(0, 0, 0, 0.45);
+
+    color: #ffffff;
+
+    font-size: 13px;
+    font-weight: 700;
+
+    pointer-events: none;
+}
+
+/* ============================================================
+   TOOLBAR
+   ============================================================ */
+
+#toolbar {
+    position: absolute;
+
+    left: 50%;
+    bottom: 20px;
+
+    transform: translateX(-50%);
+
+    min-height: 62px;
+
+    display: flex;
+    align-items: center;
+
+    gap: 7px;
+
+    padding: 6px 8px;
+
+    border-radius: 16px;
+
+    background: rgba(0, 0, 0, 0.45);
+
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+
+    z-index: 450;
+
+    pointer-events: auto;
+}
+
+#toolbar button {
+    width: 50px;
+    height: 50px;
+
+    border: none;
+    border-radius: 12px;
+
+    background: rgba(255, 255, 255, 0.15);
+
+    color: #ffffff;
+
+    cursor: pointer;
+}
+
+/* ============================================================
+   CAMERA TOGGLE
+   ============================================================ */
+
+#btn-camera-toggle {
+    position: absolute;
+
+    top: 105px;
+    right: max(12px, env(safe-area-inset-right));
+
+    width: 44px;
+    height: 44px;
+
+    border: none;
+    border-radius: 12px;
+
+    background: rgba(0, 0, 0, 0.4);
+
+    color: #ffffff;
+
+    font-size: 18px;
+
+    cursor: pointer;
+
+    z-index: 220;
+
+    pointer-events: auto;
+
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+/* ============================================================
+   NOTIFICATIONS
+   ============================================================ */
+
+#notifications {
+    position: absolute;
+
+    top: 100px;
+    left: 50%;
+
+    transform: translateX(-50%);
+
+    width: min(92vw, 420px);
+
+    display: flex;
+    flex-direction: column;
+
+    align-items: center;
+
+    gap: 8px;
+
+    z-index: 1000;
+
+    pointer-events: none;
+}
+
+/* ============================================================
+   FLOATING TEXT
+   ============================================================ */
+
+#floating-text {
+    position: absolute;
+
+    inset: 0;
+
+    z-index: 1100;
+
+    pointer-events: none;
+}
+
+/* ============================================================
+   MODAL LAYER
+   ============================================================ */
+
+#modal-layer {
+    position: absolute;
+    inset: 0;
+
+    z-index: 5000;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding:
+        max(16px, env(safe-area-inset-top))
+        max(16px, env(safe-area-inset-right))
+        max(16px, env(safe-area-inset-bottom))
+        max(16px, env(safe-area-inset-left));
+
+    background: rgba(0, 0, 0, 0.55);
+
+    opacity: 0;
+    visibility: hidden;
+
+    pointer-events: none;
+
+    transition:
+        opacity 0.2s ease,
+        visibility 0.2s ease;
+}
+
+#modal-layer.active,
+#modal-layer.visible {
+    opacity: 1;
+    visibility: visible;
+
+    pointer-events: auto;
+}
+
+/* ============================================================
+   MODALS
+   ============================================================ */
+
+.modal {
+    width: min(92vw, 520px);
+    max-height: 85vh;
+
+    overflow: auto;
+
+    border-radius: 18px;
+
+    background: #ffffff;
+
+    color: #263238;
+
+    box-shadow:
+        0 20px 60px rgba(0, 0, 0, 0.35);
+
+    -webkit-overflow-scrolling: touch;
+}
+
+/* ============================================================
+   ACCESSIBILITY
+   ============================================================ */
+
+button {
+    font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    outline: 3px solid rgba(255, 202, 40, 0.9);
+    outline-offset: 2px;
+}
+
+/* ============================================================
+   SAFE AREA
+   ============================================================ */
+
+@supports (padding: env(safe-area-inset-top)) {
+
+    #hud {
+        padding-top:
+            max(
+                8px,
+                env(safe-area-inset-top)
+            );
+    }
+
+}
+
+/* ============================================================
+   SMALL MOBILE DEVICES
+   ============================================================ */
+
+@media (max-width: 600px) {
+
+    #hud {
+        gap: 5px;
+        padding-left: 7px;
+        padding-right: 7px;
+    }
+
+    #hud-level-panel {
+        min-width: 110px;
+        max-width: 145px;
+    }
+
+    #hud-money,
+    #hud-gems {
+        min-width: 58px;
+
+        padding-left: 7px;
+        padding-right: 7px;
+
+        font-size: 12px;
+    }
+
+    #hud-time {
+        min-width: 70px;
+    }
+
+    #hud-clock {
+        font-size: 12px;
+    }
+
+    #quest-list {
+        top: 88px;
+        width: min(210px, 45vw);
+    }
+
+    #side-menu {
+        top: 88px;
+    }
+
+    #btn-camera-toggle {
+        top: 88px;
+    }
+
+    #interaction-prompt {
+        bottom: 115px;
+
+        font-size: 12px;
+    }
+
+    #farm-sign {
+        display: none;
+    }
+
+    #toolbar {
+        bottom: 8px;
+
+        max-width: 48vw;
+
+        overflow-x: auto;
+    }
+
+    #toolbar button {
+        flex: 0 0 auto;
+    }
+
+}
+
+/* ============================================================
+   REDUCED MOTION
+   ============================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+    }
+
+}
+.loading-screen {
+    padding: 0;
+    overflow: hidden;
+}
+
+.loading-image {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+object-position: center;
+}
+/* FULL SCREEN LOADING IMAGE */
+#loading-screen {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: flex;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: hidden !important;
+}
+
+#loading-screen .loading-image {
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+    object-fit: cover !important;
+    object-position: center !important;
+}
