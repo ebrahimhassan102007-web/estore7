@@ -43,6 +43,7 @@ export class HUD {
     this.joystickTouchId = null;
     this.joystickCenter = { x: 0, y: 0 };
     this.maxJoystickRadius = 38;
+    this.missionsOpen = false;
   }
 
   getState(path, fallback = null) {
@@ -107,11 +108,14 @@ export class HUD {
       </header>
 
       <aside class="hud-utility-stack" aria-label="أدوات المزرعة">
-        <button aria-label="القائمة">☰</button><button aria-label="الحقيبة">🎒</button><button aria-label="المتجر">🏪</button><button aria-label="الخريطة">🗺️</button>
+        <button type="button" class="hud-icon-btn" id="hud-btn-menu" aria-label="القائمة">☰</button>
+        <button type="button" class="hud-icon-btn" id="hud-btn-bag" aria-label="الحقيبة">🎒</button>
       </aside>
-      <div class="hud-action-stack"><button class="jump-button" aria-label="قفز">⬆</button><button class="harvest-button" aria-label="تفاعل">🤚</button></div>
-      <!-- LEFT SIDE: Missions / Tasks Board -->
-      <div class="hud-missions-panel" id="hud-missions-panel">
+      <div class="hud-action-stack">
+        <button type="button" class="harvest-button" id="hud-btn-interact" aria-label="تفاعل">🤚</button>
+      </div>
+      <button type="button" class="hud-missions-toggle" id="hud-missions-toggle" aria-label="المهام">📋</button>
+      <div class="hud-missions-panel is-collapsed" id="hud-missions-panel">
         <div class="missions-header">📋 المهام</div>
         <div class="missions-list" id="hud-missions-list"></div>
       </div>
@@ -147,6 +151,21 @@ export class HUD {
 
     this.renderHotbar();
     this.renderMissions();
+
+    const interactBtn = this.container?.querySelector('#hud-btn-interact');
+    interactBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (typeof this.callbacks.onInteract === 'function') this.callbacks.onInteract();
+    });
+
+    const missionsToggle = this.container?.querySelector('#hud-missions-toggle');
+    const missionsPanel = this.container?.querySelector('#hud-missions-panel');
+    missionsToggle?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.missionsOpen = !this.missionsOpen;
+      missionsPanel?.classList.toggle('is-collapsed', !this.missionsOpen);
+      missionsToggle.classList.toggle('is-open', this.missionsOpen);
+    });
   }
 
   onStateChanged(path, value) {
@@ -339,30 +358,18 @@ export class HUD {
       }
     };
 
-    zone.addEventListener('touchstart', (e) => {
-      const t = e.changedTouches[0];
-      onStart(t.clientX, t.clientY, t.identifier);
-    }, { passive: true });
-
-    window.addEventListener('touchmove', (e) => {
-      if (!this.joystickActive) return;
-      for (let i = 0; i < e.changedTouches.length; i++) {
-        if (e.changedTouches[i].identifier === this.joystickTouchId) {
-          onMove(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
-          break;
-        }
-      }
-    }, { passive: true });
-
-    window.addEventListener('touchend', (e) => {
-      if (!this.joystickActive) return;
-      for (let i = 0; i < e.changedTouches.length; i++) {
-        if (e.changedTouches[i].identifier === this.joystickTouchId) {
-          onEnd();
-          break;
-        }
-      }
+    zone.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      zone.setPointerCapture?.(e.pointerId);
+      onStart(e.clientX, e.clientY, e.pointerId);
     });
+    zone.addEventListener('pointermove', (e) => {
+      if (!this.joystickActive) return;
+      onMove(e.clientX, e.clientY);
+    });
+    const stop = () => onEnd();
+    zone.addEventListener('pointerup', stop);
+    zone.addEventListener('pointercancel', stop);
   }
 }
 

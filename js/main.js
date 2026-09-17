@@ -24,6 +24,7 @@ import { SoundFX } from './ui/SoundFX.js';
 import { ProductionYard } from './world/ProductionYard.js';
 import UIManager from './ui/UIManager.js';
 import { Environment } from './world/Environment.js';
+import { CollisionEngine } from './core/CollisionEngine.js';
 
 /* ============================================================
    CAMERA & ENGINE CONFIGURATION (Ground Focused Framing)
@@ -74,24 +75,33 @@ const CONFIG = Object.freeze({
    PLAYER CONTROLLER WITH SCALED HAND TOOL ATTACHMENT
    ============================================================ */
 class PlayerController {
-    constructor(scene) {
+    constructor(scene, { collision = null } = {}) {
         this.scene = scene;
+        this.collision = collision;
         this.root = new THREE.Group();
+        this.root.name = 'Player';
         this.root.position.set(0, 0, 0);
         this.scene.add(this.root);
 
         this.model = null;
         this.mixer = null;
         this.actions = {};
-        this.clipNames = { idle: null, walk: null, run: null };
+        this.clipNames = { idle: null, walk: null, run: null, interact: null };
         this.currentAction = null;
         this.currentState = 'idle';
 
+        this.handSocket = null;
+        this.toolAnchor = new THREE.Group();
+        this.toolAnchor.name = 'ToolAnchor';
         this.equippedToolMesh = null;
+        this.equippedItem = null;
+        this.toolRestRotation = new THREE.Euler(-Math.PI / 2, 0, Math.PI / 2);
+
         this.currentSpeed = 0.0;
         this.targetSpeed = 0.0;
         this.moveDirection = new THREE.Vector3();
         this.isMoving = false;
+        this.radius = 0.42;
 
         this.loadModel();
     }
@@ -112,14 +122,16 @@ class PlayerController {
                     }
                 });
                 this.root.add(this.model);
-                this.attachHandTool();
+                this.bindHandSocket();
+                this.equipItem({ id: 'axe', type: 'tool' });
                 this.setupAnimations(gltf);
                 console.log('[MY FARM] Character model loaded.');
             },
             undefined,
             () => {
                 this.createFallbackAvatar();
-                this.attachHandTool();
+                this.bindHandSocket();
+                this.equipItem({ id: 'axe', type: 'tool' });
             }
         );
     }
@@ -172,53 +184,137 @@ class PlayerController {
         group.add(lBoot);
         group.add(rBoot);
 
+        const rightArm = new THREE.Group();
+        rightArm.name = 'Wrist.R';
+        rightArm.position.set(0.42, 1.12, 0.12);
+        group.add(rightArm);
+
         this.model = group;
         this.root.add(this.model);
     }
 
     /**
-     * فأس صغير الحجم ومتناسق بدقة داخل قبضة اليد اليمنى
+     * Bind the tool anchor to the farmer's right-hand bone (Wrist.R).
+     * Falls back to a shoulder-height grip if the GLB has no skeleton.
      */
-    attachHandTool() {
-        const axeGroup = new THREE.Group();
-        const handleMat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.9 });
-        const bladeMat = new THREE.MeshStandardMaterial({ color: 0xa5a5a5, metalness: 0.7, roughness: 0.3 });
+    bindHandSocket() {
+        this.handSocket = null;
+        if (this.model) {
+            this.model.traverse((node) => {
+                if (this.handSocket) return;
+                const name = node.name || '';
+                if (
+                    name === 'Wrist.R' ||
+                    name === 'Hand.R' ||
+                    /wrist\.r/i.test(name) ||
+                    /right.?hand/i.test(name)
+                ) {
+                    this.handSocket = node;
+                }
+            });
+        }
 
-        const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.42, 6), handleMat);
-        axeGroup.add(handle);
+        if (this.toolAnchor.parent) this.toolAnchor.parent.remove(this.toolAnchor);
 
-        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.11, 0.10), bladeMat);
-        blade.position.set(0, 0.15, 0.04);
-        blade.castShadow = true;
-        axeGroup.add(blade);
+        if (this.handSocket) {
+            this.handSocket.add(this.toolAnchor);
+            this.toolAnchor.position.set(0, 0.045, 0.02);
+            this.toolAnchor.rotation.copy(this.toolRestRotation);
+        } else {
+            this.root.add(this.toolAnchor);
+            this.toolAnchor.position.set(0.38, 0.92, 0.18);
+            this.toolAnchor.rotation.set(Math.PI / 6, 0, -Math.PI / 12);
+            this.toolRestRotation.copy(this.toolAnchor.rotation);
+        }
+    }
 
-        axeGroup.position.set(0.38, 0.92, 0.18);
-        axeGroup.rotation.set(Math.PI / 6, 0, -Math.PI / 12);
+    buildToolMesh(item) {
+        const id = item?.id || 'axe';
+        const type = item?.type || 'tool';
+        const group = new THREE.Group();
+        group.name = `tool-${id}`;
 
-        this.equippedToolMesh = axeGroup;
-        this.root.add(axeGroup);
+        const wood = new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.9 });
+        const metal = new THREE.MeshStandardMaterial({ color: 0xa5a5a5, metalness: 0.7, roughness: 0.3 });
+        const tin = new THREE.MeshStandardMaterial({ color: 0x6e8ea8, metalness: 0.45, roughness: 0.4 });
+        const cloth = new THREE.MeshStandardMaterial({ color: 0xc9782a, roughness: 0.85 });
+
+        if (id === 'pickaxe' || id === 'hoe') {
+            const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.02, 0.46, 6), wood);
+            group.add(handle);
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.04, 0.05), metal);
+            head.position.set(0.04, 0.2, 0);
+            head.castShadow = true;
+            group.add(head);
+            const tip = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.12, 6), metal);
+            tip.rotation.z = Math.PI / 2;
+            tip.position.set(0.14, 0.2, 0);
+            group.add(tip);
+        } else if (id === 'water_can' || id === 'watering_can') {
+            const can = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.12, 8), tin);
+            can.position.y = 0.04;
+            group.add(can);
+            const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.018, 0.16, 6), tin);
+            spout.rotation.z = Math.PI / 2.6;
+            spout.position.set(0.1, 0.08, 0);
+            group.add(spout);
+            const handle = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.01, 5, 10, Math.PI), wood);
+            handle.rotation.x = Math.PI / 2;
+            handle.position.set(-0.02, 0.12, 0);
+            group.add(handle);
+        } else if (type === 'seed') {
+            const pouch = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), cloth);
+            pouch.scale.set(1, 0.85, 0.8);
+            group.add(pouch);
+            const tie = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.04, 6), wood);
+            tie.position.y = 0.06;
+            group.add(tie);
+        } else {
+            const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.42, 6), wood);
+            group.add(handle);
+            const blade = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.11, 0.10), metal);
+            blade.position.set(0, 0.15, 0.04);
+            blade.castShadow = true;
+            group.add(blade);
+        }
+
+        group.traverse((child) => {
+            if (child.isMesh) child.castShadow = true;
+        });
+        return group;
+    }
+
+    equipItem(item) {
+        if (!this.toolAnchor) return;
+        while (this.toolAnchor.children.length) {
+            this.toolAnchor.remove(this.toolAnchor.children[0]);
+        }
+        this.equippedItem = item || null;
+        if (!item) {
+            this.equippedToolMesh = null;
+            return;
+        }
+        const tool = this.buildToolMesh(item);
+        this.toolAnchor.add(tool);
+        this.equippedToolMesh = tool;
     }
 
     playToolSwing() {
-        if (!this.equippedToolMesh) return;
-        const initialRotX = this.equippedToolMesh.rotation.x;
-        const initialPosY = this.equippedToolMesh.position.y;
+        if (!this.toolAnchor) return;
+        const rest = this.toolRestRotation;
+        this.toolAnchor.rotation.x = rest.x - 0.95;
 
-        this.equippedToolMesh.rotation.x = initialRotX - 1.1;
-        this.equippedToolMesh.position.y = initialPosY + 0.12;
+        if (this.clipNames.interact && this.actions[this.clipNames.interact]) {
+            const action = this.actions[this.clipNames.interact];
+            action.reset().setLoop(THREE.LoopOnce, 1).play();
+        }
 
         setTimeout(() => {
-            if (this.equippedToolMesh) {
-                this.equippedToolMesh.rotation.x = initialRotX + 0.5;
-                this.equippedToolMesh.position.y = initialPosY - 0.08;
-            }
+            if (this.toolAnchor) this.toolAnchor.rotation.x = rest.x + 0.35;
         }, 110);
 
         setTimeout(() => {
-            if (this.equippedToolMesh) {
-                this.equippedToolMesh.rotation.x = initialRotX;
-                this.equippedToolMesh.position.y = initialPosY;
-            }
+            if (this.toolAnchor) this.toolAnchor.rotation.copy(rest);
         }, 240);
     }
 
@@ -237,9 +333,10 @@ class PlayerController {
             return null;
         };
 
-        this.clipNames.idle = resolveClip(['idle', 'stand', 'wait', 'rest']) || Object.keys(this.actions)[0];
+        this.clipNames.idle = resolveClip(['idle_neutral', 'idle', 'stand', 'wait', 'rest']) || Object.keys(this.actions)[0];
         this.clipNames.walk = resolveClip(['walk', 'walking', 'move', 'stride']) || this.clipNames.idle;
         this.clipNames.run = resolveClip(['run', 'running', 'sprint']);
+        this.clipNames.interact = resolveClip(['interact', 'punch_right', 'sword_slash']);
 
         if (this.clipNames.idle && this.actions[this.clipNames.idle]) {
             const idleAction = this.actions[this.clipNames.idle];
@@ -287,11 +384,25 @@ class PlayerController {
 
         if (this.currentSpeed > 0.0) {
             const displacement = this.currentSpeed * delta;
-            this.root.position.x += this.moveDirection.x * displacement;
-            this.root.position.z += this.moveDirection.z * displacement;
+            const nextX = this.root.position.x + this.moveDirection.x * displacement;
+            const nextZ = this.root.position.z + this.moveDirection.z * displacement;
 
-            this.root.position.x = THREE.MathUtils.clamp(this.root.position.x, -30, 30);
-            this.root.position.z = THREE.MathUtils.clamp(this.root.position.z, -30, 30);
+            let x = nextX;
+            let z = nextZ;
+            if (this.collision) {
+                const resolved = this.collision.resolveCircle(
+                    this.root.position.x,
+                    this.root.position.z,
+                    nextX,
+                    nextZ,
+                    this.radius
+                );
+                x = resolved.x;
+                z = resolved.z;
+            }
+
+            this.root.position.x = THREE.MathUtils.clamp(x, -30, 30);
+            this.root.position.z = THREE.MathUtils.clamp(z, -30, 30);
 
             const targetAngle = Math.atan2(this.moveDirection.x, this.moveDirection.z);
             let currentAngle = this.root.rotation.y;
@@ -393,7 +504,8 @@ class MyFarmApp {
             this.createScene();
             this.createCamera();
             this.createLighting();
-            this.environment = new Environment(this.scene);
+            this.collision = new CollisionEngine();
+            this.environment = new Environment(this.scene, { collision: this.collision });
             this.ground = this.environment.group;
 
             try {
@@ -422,7 +534,7 @@ class MyFarmApp {
 
             // 🏭 مباني الإنتاج ثلاثية الأبعاد (تتزامن مع الحالة تلقائيًا)
             try {
-                this.productionYard = new ProductionYard({ scene: this.scene });
+                this.productionYard = new ProductionYard({ scene: this.scene, collision: this.collision });
                 this.productionYard.syncFromState(GameState.get('farm.buildings') || []);
             } catch (e) {
                 console.warn('[MY FARM] ProductionYard notice:', e);
@@ -446,10 +558,12 @@ class MyFarmApp {
                         onMove: (vector) => {
                             this.joystickVector.x = vector.x;
                             this.joystickVector.y = vector.y;
-                        }
+                        },
+                        onInteract: () => this.triggerActiveInteraction()
                     }
                 });
                 this.hud.mount(document.body);
+                Events.on('hotbar:selected', (item) => this.player?.equipItem(item));
             } catch (e) {
                 console.warn('[MY FARM] HUD Mount Notice:', e);
             }
@@ -786,7 +900,7 @@ class MyFarmApp {
     }
 
     createPlayer() {
-        this.player = new PlayerController(this.scene);
+        this.player = new PlayerController(this.scene, { collision: this.collision });
     }
 
     /* ========================================================
@@ -1063,6 +1177,12 @@ class MyFarmApp {
         if (!this.activeTarget) return;
         const target = this.activeTarget;
 
+        if (target.type === 'door') {
+            const opened = target.door.toggle();
+            this.spawnFloatingFeedback(opened ? '🚪 الباب فُتح' : '🚪 الباب أُغلق', '#ffd54f');
+            return;
+        }
+
         if (target.type === 'field' && !target.data.purchased) {
             const modal = document.getElementById('purchase-modal');
             if (modal) modal.classList.add('open');
@@ -1105,6 +1225,15 @@ class MyFarmApp {
         let closestTarget = null;
         let minDist = 3.6;
 
+        const nearDoor = this.environment?.getNearestDoor(playerPos, 2.5);
+        if (nearDoor) {
+            const doorDist = nearDoor.distanceTo(playerPos);
+            if (doorDist < minDist) {
+                minDist = doorDist;
+                closestTarget = { type: 'door', door: nearDoor };
+            }
+        }
+
         for (const [fieldId, entry] of this.fieldMeshes.entries()) {
             const field = entry.fieldData;
             const fieldCenter = new THREE.Vector3(field.posX, 0, field.posZ);
@@ -1112,9 +1241,7 @@ class MyFarmApp {
 
             if (distToField > 5.5) continue;
 
-            if (!field.purchased || !field.prepared) {
-                if (distToField < minDist) {
-                    minDist = distToField;
+         ld;
                     closestTarget = { type: 'field', fieldId, data: field };
                 }
             } else {
@@ -1135,11 +1262,19 @@ class MyFarmApp {
         const promptDesc = document.getElementById('prompt-desc');
         const promptBtn = document.getElementById('btn-prompt-action');
 
+        if (!promptEl || !promptTitle || !promptDesc || !promptBtn) return;
+
         if (closestTarget) {
             this.activeTarget = closestTarget;
             promptEl.classList.add('visible');
 
-            if (closestTarget.type === 'field') {
+            if (closestTarget.type === 'door') {
+                const open = closestTarget.door.open;
+                promptTitle.textContent = open ? '🚪 باب مفتوح' : `🚪 ${closestTarget.door.label}`;
+                promptDesc.textContent = open ? 'أغلق الباب لتأمين المبنى' : 'ادخل المبنى أو أغلقه بعد المرور';
+                promptBtn.textContent = open ? 'إغلاق الباب' : 'فتح الباب';
+                promptBtn.style.background = 'linear-gradient(180deg, #c48a3a 0%, #8a5520 100%)';
+            } else if (closestTarget.type === 'field') {
                 const f = closestTarget.data;
                 if (!f.purchased) {
                     promptTitle.textContent = '🌾 أرض جديدة متاح فتحها';
@@ -1265,9 +1400,13 @@ class MyFarmApp {
         if (e.code === 'KeyS' || e.code === 'ArrowDown') this.keys.down = true;
         if (e.code === 'KeyA' || e.code === 'ArrowLeft') this.keys.left = true;
         if (e.code === 'KeyD' || e.code === 'ArrowRight') this.keys.right = true;
-        if (e.code === 'Space') {
+        if (e.code === 'Space' || e.code === 'KeyE') {
             e.preventDefault();
             this.triggerActiveInteraction();
+        }
+        if (e.code >= 'Digit1' && e.code <= 'Digit7') {
+            const idx = Number(e.code.replace('Digit', '')) - 1;
+            this.hud?.selectSlot(idx);
         }
     }
 

@@ -22,6 +22,18 @@
 
 #game-hud-overlay * {
   box-sizing: border-box;
+}
+
+#game-hud-overlay button,
+#game-hud-overlay .hud-level-card,
+#game-hud-overlay .hud-currency-item,
+#game-hud-overlay .hud-time-pill,
+#game-hud-overlay .hud-missions-panel,
+#game-hud-overlay .hud-missions-toggle,
+#game-hud-overlay .hud-utility-stack,
+#game-hud-overlay .hud-action-stack,
+#game-hud-overlay .hud-joystick-zone,
+#game-hud-overlay .hud-bottom-hotbar {
   pointer-events: auto;
 }
 
@@ -151,11 +163,31 @@
 }
 
 /* ================= MISSIONS PANEL ================= */
+.hud-missions-toggle {
+  position: absolute;
+  top: 78px;
+  left: max(12px, env(safe-area-inset-left));
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  border: 2px solid #fff4d2;
+  background: linear-gradient(#8d5b2f, #543016);
+  color: #fff;
+  font-size: 20px;
+  box-shadow: 0 4px 0 #321b0c, 0 7px 16px rgba(0,0,0,0.35);
+  cursor: pointer;
+  z-index: 910;
+}
+
+.hud-missions-toggle.is-open {
+  outline: 2px solid #ffde00;
+}
+
 .hud-missions-panel {
   position: absolute;
-  top: 80px;
+  top: 128px;
   left: max(12px, env(safe-area-inset-left));
-  width: 200px;
+  width: 196px;
   background: linear-gradient(180deg, #fcedc9 0%, #e6cb9d 100%);
   border: 3px solid #814c1e;
   border-radius: 16px;
@@ -164,6 +196,10 @@
   direction: rtl;
   pointer-events: auto;
   z-index: 900;
+}
+
+.hud-missions-panel.is-collapsed {
+  display: none;
 }
 
 .missions-header {
