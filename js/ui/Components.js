@@ -26,6 +26,32 @@ import {
 } from '../utils/Utils.js';
 
 
+/**
+ * التكلفة في GameData هي `{ coins, gems }` (وليس رقمًا).
+ * قراءتها بـ Number() كانت تُرجع NaN فتتعطّل كل بطاقات المتجر.
+ */
+export function costOf(item) {
+    const raw = item?.cost ?? item?.price ?? 0;
+
+    if (raw && typeof raw === 'object') {
+        return {
+            coins: Number(raw.coins) || 0,
+            gems: Number(raw.gems) || 0
+        };
+    }
+
+    return {
+        coins: Number(raw) || 0,
+        gems: Number(item?.gems) || 0
+    };
+}
+
+/** اسم عربي جاهز للعرض: name من GameData ثم i18n ثم المعرّف. */
+export function labelOf(def, fallbackId, lang = 'ar') {
+    if (!def) return t(fallbackId, lang);
+    return def.name || t(def.nameKey || fallbackId, lang);
+}
+
 export const Components = {
 
     /**
@@ -34,16 +60,14 @@ export const Components = {
     shopItem(item, lang = 'ar') {
 
         const level =
-            GameState.get('player.level');
+            GameState.get('player.level') || 1;
 
         const isLocked =
-            item.unlockLevel > level;
+            (item.unlockLevel || 1) > level;
 
-        const cost =
-            Number(item.cost || 0);
-
-        const gems =
-            Number(item.gems || 0);
+        const price = costOf(item);
+        const cost = price.coins;
+        const gems = price.gems;
 
         const coins =
             Number(
@@ -74,7 +98,7 @@ export const Components = {
                 </div>
 
                 <div class="shop-name">
-                    ${t(item.nameKey || item.id, lang)}
+                    ${item.name || t(item.nameKey || item.id, lang)}
                 </div>
 
                 <div class="shop-desc">
@@ -160,7 +184,7 @@ export const Components = {
                 </div>
 
                 <div class="item-name">
-                    ${t(item.nameKey || item.id, lang)}
+                    ${item.name || t(item.nameKey || item.id, lang)}
                 </div>
 
                 <div class="item-count">
@@ -266,8 +290,8 @@ export const Components = {
 
                                         <span class="item-need">
                                             ${itemRequest.amount}x
-                                            ${t(
-                                                item?.nameKey ||
+                                            ${labelOf(
+                                                item,
                                                 itemRequest.item,
                                                 lang
                                             )}
@@ -319,7 +343,7 @@ export const Components = {
                                 >
                                     ✓
                                     ${t(
-                                        'complete',
+                                        'accept',
                                         lang
                                     )}
                                 </button>
@@ -402,8 +426,8 @@ export const Components = {
 
                     <div class="m-name">
                         ${listing.amount}x
-                        ${t(
-                            item?.nameKey ||
+                        ${labelOf(
+                            item,
                             listing.itemId,
                             lang
                         )}
@@ -840,7 +864,7 @@ export const Components = {
                 </div>
 
                 <div class="recipe-name">
-                    ${t(
+                    ${recipe.name || t(
                         recipe.nameKey ||
                         recipe.id,
                         lang

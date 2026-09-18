@@ -19,10 +19,12 @@ import { ProductionSystem } from './systems/ProductionSystem.js';
 import { InventorySystem } from './systems/InventorySystem.js';
 import { XPSystem } from './systems/XPSystem.js';
 import { OrderSystem } from './systems/OrderSystem.js';
+import { MarketSystem } from './systems/MarketSystem.js';
 import { AnimalSystem } from './systems/AnimalSystem.js';
 import { getBuilding, STARTER_KIT, ITEMS, getAnimal } from './data/GameData.js';
 import { uuid } from './utils/Utils.js';
 import { ProductionPanel } from './ui/ProductionPanel.js';
+import { GameUI } from './ui/UI.js';
 import { Toast } from './ui/Toast.js';
 import { SoundFX } from './ui/SoundFX.js';
 import { ProductionYard } from './world/ProductionYard.js';
@@ -78,6 +80,9 @@ const CONFIG = Object.freeze({
 /* ============================================================
    PLAYER CONTROLLER WITH SCALED HAND TOOL ATTACHMENT
    ============================================================ */
+/** إزاحة الشمس الافتراضية قبل أول tick لدورة النهار/الليل. */
+const DEFAULT_SUN_OFFSET = Object.freeze({ x: 22, y: 38, z: 18 });
+
 class PlayerController {
     constructor(scene, { collision = null } = {}) {
         this.scene = scene;
@@ -107,7 +112,34 @@ class PlayerController {
         this.isMoving = false;
         this.radius = 0.42;
 
+        // قفزة بسيطة (زر ⤴️ أسفل اليمين) — جاذبية على محور y فقط
+        this.verticalVelocity = 0.0;
+        this.isGrounded = true;
+        this.jumpSpeed = 5.2;
+        this.gravity = 14.0;
+
         this.loadModel();
+    }
+
+    /** قفزة إن كان اللاعب على الأرض. @returns {boolean} هل نفّذنا قفزة */
+    jump() {
+        if (!this.isGrounded) return false;
+        this.isGrounded = false;
+        this.verticalVelocity = this.jumpSpeed;
+        return true;
+    }
+
+    _updateJump(delta) {
+        if (this.isGrounded) return;
+
+        this.verticalVelocity -= this.gravity * delta;
+        this.root.position.y += this.verticalVelocity * delta;
+
+        if (this.root.position.y <= 0) {
+            this.root.position.y = 0;
+            this.verticalVelocity = 0;
+            this.isGrounded = true;
+        }
     }
 
     loadModel() {
@@ -431,6 +463,8 @@ class PlayerController {
         if (this.mixer) {
             this.mixer.update(delta);
         }
+
+        this._updateJump(delta);
     }
 }
 
@@ -692,6 +726,7 @@ class MyFarmApp {
         this.productionPanel = null;
         this.toast = null;
         this.soundFX = null;
+        this.gameUI = null;
 
         // 🎯 تركيز الكاميرا المؤقت على مبنى
         this.cameraFocus = { active: false, x: 0, z: 0, until: 0 };
@@ -822,6 +857,15 @@ class MyFarmApp {
             window.addEventListener('keydown', this._boundKeyDown);
             window.addEventListener('keyup', this._boundKeyUp);
 
+            // 🖥️ التنبيهات + المؤثرات الصوتية (قبل الواجهة حتى تستخدمها)
+            try {
+                this.toast = new Toast().mount(document.body);
+                this.soundFX = new SoundFX({ gameState: GameState });
+                this.setupToastBridge();
+            } catch (e) {
+                console.warn('[MY FARM] Toast/Sound notice:', e);
+            }
+
             // Mount Modern Compact HUD
             try {
                 this.hud = new UIManager({
@@ -833,20 +877,41 @@ class MyFarmApp {
                             this.joystickVector.x = vector.x;
                             this.joystickVector.y = vector.y;
                         },
-                        onInteract: () => this.triggerActiveInteraction()
+                        onInteract: () => this.triggerActiveInteraction(),
+                        onJump: () => {
+                            if (this.player?.jump?.()) this.soundFX?.play?.('open');
+                        },
+                        onOpenPanel: (name, arg) => this.gameUI?.open(name, arg)
                     }
                 });
                 this.hud.mount(document.body);
-                Events.on('hotbar:selected', (item) => this.player?.equipItem(item));
+                Events.on('hotbar:selected', (item) => {
+                    if (!item || item.type === 'panel') return;
+                    this.player?.equipItem(item);
+                });
             } catch (e) {
                 console.warn('[MY FARM] HUD Mount Notice:', e);
             }
 
-            // 🖥️ لوحة الإنتاج + التنبيهات + المؤثرات الصوتية
+            // 🏪🎒📦🛒🗺️☰ لوحات الواجهة (متجر/مخزن/طلبات/سوق/خريطة/قائمة)
             try {
-                this.toast = new Toast().mount(document.body);
-                this.soundFX = new SoundFX({ gameState: GameState });
+                this.gameUI = new GameUI({
+                    eventBus: Events,
+                    toast: this.toast,
+                    getPlayerPos: () => (this.player?.root
+                        ? { x: this.player.root.position.x, z: this.player.root.position.z }
+                        : null)
+                });
+                this.gameUI.mount();
 
+                // احتياط: أي زر يصدر الحدث بدل الـ callback
+                Events.on('hud:panel', ({ name, arg } = {}) => this.gameUI?.open(name, arg));
+            } catch (e) {
+                console.warn('[MY FARM] GameUI Mount Notice:', e);
+            }
+
+            // 🏭 لوحة الإنتاج
+            try {
                 this.productionPanel = new ProductionPanel({
                     events: Events,
                     gameState: GameState,
@@ -857,7 +922,6 @@ class MyFarmApp {
                     getBuildingWorldPos: (id) => this.productionYard?.getWorldPos(id) || null
                 });
                 this.productionPanel.mount(document.body);
-                this.setupToastBridge();
             } catch (e) {
                 console.warn('[MY FARM] Production UI notice:', e);
             }
@@ -923,7 +987,15 @@ class MyFarmApp {
                 InventorySystem,
                 ProductionSystem,
                 ProductionYard: this.productionYard,
-                ProductionPanel: this.productionPanel
+                ProductionPanel: this.productionPanel,
+                GameUI: this.gameUI,
+                LandSystem,
+                OrderSystem,
+                MarketSystem,
+                /* عدد الرسمات الفعلي لهذا الإطار (لقياس الأداء على الجهاز) */
+                drawCalls: () => this.renderer?.info?.render?.calls ?? 0,
+                triangles: () => this.renderer?.info?.render?.triangles ?? 0,
+                openPanel: (name, tab) => this.gameUI?.open(name, tab)
             };
 
             Events.emit('game:ready', this);
@@ -1801,7 +1873,7 @@ class MyFarmApp {
             e.preventDefault();
             this.triggerActiveInteraction();
         }
-        if (e.code >= 'Digit1' && e.code <= 'Digit7') {
+        if (e.code >= 'Digit1' && e.code <= 'Digit9') {
             const idx = Number(e.code.replace('Digit', '')) - 1;
             this.hud?.selectSlot(idx);
         }
@@ -2005,15 +2077,17 @@ class MyFarmApp {
         const duskFactor = Math.min(1, Math.max(0, (elevation + 0.14) / 0.30));
 
         // --- الشمس تدور حول المزرعة ---
+        // نحفظ الإزاحة فقط؛ update() تضعها بالنسبة لموضع اللاعب كل إطار
+        // (كان update() يعيد تثبيت الشمس على (22,38,18) فيُلغي القوس تمامًا).
         const radius = 46;
         const angle = ((hourFloat - 6) / 12) * Math.PI;
-        const px = this.player?.root?.position?.x || 0;
-        const pz = this.player?.root?.position?.z || 0;
-        this.lights.sun.position.set(
-            px + Math.cos(angle) * radius * 0.6,
+        if (!this._sunOffset) this._sunOffset = new THREE.Vector3(22, 38, 18);
+        this._sunOffset.set(
+            Math.cos(angle) * radius * 0.6,
             Math.max(-14, elevation * radius),
-            pz + Math.sin(angle) * radius * 0.35
+            Math.sin(angle) * radius * 0.35
         );
+
         this.lights.sun.intensity = 0.18 + dayFactor * 1.95;
         this.lights.sun.color.setHex(dayFactor > 0.55 ? 0xfff6e4 : 0xffb066);
 
@@ -2104,10 +2178,12 @@ class MyFarmApp {
             this.checkNearTargets();
 
             if (this.lights.sun) {
+                // قوس النهار/الليل من applyDayNight + تتبّع اللاعب (ظلال متحركة)
+                const off = this._sunOffset || DEFAULT_SUN_OFFSET;
                 this.lights.sun.position.set(
-                    this.player.root.position.x + 22,
-                    38,
-                    this.player.root.position.z + 18
+                    this.player.root.position.x + off.x,
+                    off.y,
+                    this.player.root.position.z + off.z
                 );
                 this.lights.sun.target.position.copy(this.player.root.position);
                 this.lights.sun.target.updateMatrixWorld();
@@ -2159,20 +2235,21 @@ class MyFarmApp {
 
     hideLoading() {
         const loadingScreen = document.getElementById('loading-screen');
-        if (loadingScreen) {
-            // نملأ الشريط ثم نخفي — حتى لا يبدو التحميل مقطوعًا
-            const fill = document.getElementById('loading-fill');
-            const pct = document.getElementById('loading-pct');
-            if (fill) fill.style.width = '100%';
-            if (pct) pct.textContent = '100%';
+        if (!loadingScreen) return;
 
-            setTimeout(() => loadingScreen.classList.add('fade-out'), 180);
-            setTimeout(() => {
-                if (loadingScreen && loadingScreen.parentNode) {
-                    loadingScreen.parentNode.removeChild(loadingScreen);
-                }
-            }, 620);
-        }
+        // نملأ الشريط ثم نخفي — حتى لا يبدو التحميل مقطوعًا
+        const fill = document.getElementById('loading-fill');
+        const track = document.getElementById('loading-track');
+        if (fill) fill.style.width = '100%';
+        if (track) track.setAttribute('aria-valuenow', '100');
+        this.setBootProgress(100);
+
+        setTimeout(() => loadingScreen.classList.add('fade-out'), 180);
+        setTimeout(() => {
+            if (loadingScreen.parentNode) {
+                loadingScreen.parentNode.removeChild(loadingScreen);
+            }
+        }, 620);
     }
 
     stop() {
@@ -2210,12 +2287,17 @@ class MyFarmApp {
 
 const app = new MyFarmApp();
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => app.boot(), { once: true });
-} else {
-    app.boot();
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => app.boot(), { once: true });
+    } else {
+        app.boot();
+    }
 }
 
 if (typeof window !== 'undefined') {
     window.MY_FARM = app;
 }
+
+/* مُصدَّر للاختبار/التدقيق (لا يستخدمه المتصفح — main.js هو نقطة الدخول). */
+export { MyFarmApp, CropBatchRenderer, PlayerController, app };
