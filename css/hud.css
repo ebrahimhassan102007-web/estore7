@@ -1224,6 +1224,12 @@
 }
 
 /* ------------------------------ الخريطة ------------------------------ */
+/* Mobile safe-area contract: reserve space for notches and home indicators. */
+:root { --safe-top: max(28px, env(safe-area-inset-top)); --safe-right: max(28px, env(safe-area-inset-right)); --safe-bottom: max(28px, env(safe-area-inset-bottom)); --safe-left: max(28px, env(safe-area-inset-left)); }
+.hud, .hud-root, #hud { padding-top: var(--safe-top); padding-left: var(--safe-left); padding-right: var(--safe-right); }
+.hud-hotbar, #hotbar, .hotbar { bottom: calc(var(--safe-bottom) + 12px); }
+@media (max-width: 700px) { .hud-modal, .modal, .panel-modal { inset: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left); margin: auto; max-width: min(92vw, 560px); max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom)); overflow: auto; } }
+
 .hud-map {
   position: relative;
   width: 100%;
