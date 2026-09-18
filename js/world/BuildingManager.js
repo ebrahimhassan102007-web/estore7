@@ -137,11 +137,12 @@ export class BuildingManager {
             doorCollider = walls.door;
         }
 
+        // بابا الحظيرة من الخشب الحقيقي يفتحان للخارج (لا X عائمًا).
         const left = new InteractiveDoor({
             parent: g,
             hinge: { x: -3.0, y: 0.12, z: 3.55 },
             size: { w: 2.95, h: 4.0, d: 0.14 },
-            material: darkRed,
+            material: wood,
             openAngle: Math.PI * 0.78,
             id: 'barn-door-left',
             label: 'باب الحظيرة',
@@ -152,7 +153,7 @@ export class BuildingManager {
             parent: g,
             hinge: { x: 3.0, y: 0.12, z: 3.55 },
             size: { w: 2.95, h: 4.0, d: 0.14 },
-            material: red,
+            material: wood,
             openAngle: -Math.PI * 0.78,
             id: 'barn-door-right',
             label: 'باب الحظيرة',
@@ -164,12 +165,34 @@ export class BuildingManager {
         right.handle.position.x = -0.22;
         this.doors.push(left, right);
 
-        for (const x of [-1.7, 1.7]) {
-            const a = box(g, [0.18, 4, 0.2], [x, 2.1, 3.72], white);
-            a.rotation.z = 0.62;
-            const b = a.clone();
-            b.rotation.z = -0.62;
-            g.add(b);
+        // عوارض أفقية على كل ضلفة — أبناء الـ pivot فيتحركون مع الباب.
+        const battenMat = mat(0x40220f);
+        const battens = [
+            [left.pivot, 2.95 * 0.5],
+            [right.pivot, -2.95 * 0.5]
+        ];
+        for (const [pivot, cx] of battens) {
+            for (const y of [1.0, 2.1, 3.2]) {
+                const batten = new THREE.Mesh(
+                    new THREE.BoxGeometry(2.7, 0.16, 0.05),
+                    battenMat
+                );
+                batten.position.set(cx, y, 0.09);
+                batten.castShadow = true;
+                pivot.add(batten);
+            }
+        }
+
+        // شرفة واضحة أمام الباب (بلاطة + عمودان + سقف صغير).
+        const stoneMat = mat(0x8d8578);
+        box(g, [7.2, 0.12, 2.6], [0, 0.06, 4.9], stoneMat);
+        box(g, [0.25, 3.1, 0.25], [-3.2, 1.55, 5.9], white);
+        box(g, [0.25, 3.1, 0.25], [3.2, 1.55, 5.9], white);
+        box(g, [7.6, 0.16, 3.0], [0, 3.2, 4.9], mat(0x3a3430));
+
+        if (this.collision) {
+            this.collision.addBox({ id: 'barn-porch-l', x: 14 - 3.2, z: -12 + 5.9, width: 0.4, depth: 0.4, height: 3.1, tag: 'prop' });
+            this.collision.addBox({ id: 'barn-porch-r', x: 14 + 3.2, z: -12 + 5.9, width: 0.4, depth: 0.4, height: 3.1, tag: 'prop' });
         }
 
         this.group.add(g);
@@ -349,38 +372,44 @@ export class BuildingManager {
     }
 
     sign() {
+        // قوس ترحيب خشبي في فجوة السور الجنوبي — المزارع يمر من تحته.
         const g = new THREE.Group();
-        g.position.set(0, 0, 7);
-        box(g, [0.22, 2.5, 0.22], [0, 1.25, 0], mat(0x60401f));
-        box(g, [5, 1.15, 0.22], [0, 2.2, 0], mat(0x8b572c));
+        g.position.set(0, 0, 25);
+        const postMat = mat(0x60401f);
+        box(g, [0.3, 3.7, 0.3], [-2.6, 1.85, 0], postMat);
+        box(g, [0.3, 3.7, 0.3], [2.6, 1.85, 0], postMat);
+        box(g, [6.4, 1.2, 0.24], [0, 3.4, 0], mat(0x8b572c));
+        box(g, [6.9, 0.16, 1.0], [0, 4.08, 0], mat(0x5c3a1c));
 
+        // لوحة قماشية أكبر (2048px) حتى يُقرأ النص من بعيد دون انضغاط:
+        // نسبة اللوحة 6.4/1.2 = 5.33 = نسبة الرسم تمامًا.
         const c = document.createElement('canvas');
-        c.width = 1024;
-        c.height = 220;
+        c.width = 2048;
+        c.height = 384;
         const ctx = c.getContext('2d');
+        ctx.clearRect(0, 0, c.width, c.height);
         ctx.fillStyle = '#fff3c9';
-        ctx.font = 'bold 66px Tajawal, sans-serif';
+        ctx.font = '900 150px Tajawal, "Segoe UI", sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('مزرعتك - انت تستحق الأفضل ❤️', 512, 140);
+        ctx.textBaseline = 'middle';
+        ctx.fillText('مزرعتك انت تستحق الأفضل', 1024, 200);
+        const tex = new THREE.CanvasTexture(c);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = 4;
         const sprite = new THREE.Sprite(
-            new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true })
+            new THREE.SpriteMaterial({ map: tex, transparent: true })
         );
-        sprite.position.set(0, 2.2, 0.14);
-        sprite.scale.set(4.7, 1, 1);
+        // الـ Sprite يواجه الكاميرا دائمًا فيُقرأ من الجهتين.
+        sprite.position.set(0, 3.4, 0);
+        sprite.scale.set(6.1, 1.145, 1);
         g.add(sprite);
         this.group.add(g);
         mergeGroupChildren(g, { name: 'Sign-body' });
 
+        // تصادم على العمودين فقط — المنتصف مفتوح للمرور.
         if (this.collision) {
-            this.collision.addBox({
-                id: 'sign',
-                x: 0,
-                z: 7,
-                width: 0.5,
-                depth: 0.5,
-                height: 2.5,
-                tag: 'prop'
-            });
+            this.collision.addBox({ id: 'sign-post-l', x: -2.6, z: 25, width: 0.5, depth: 0.5, height: 3.7, tag: 'prop' });
+            this.collision.addBox({ id: 'sign-post-r', x: 2.6, z: 25, width: 0.5, depth: 0.5, height: 3.7, tag: 'prop' });
         }
     }
 
