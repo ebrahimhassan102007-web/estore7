@@ -1458,6 +1458,11 @@ class MyFarmApp {
             return;
         }
 
+        if (target.type === 'market') {
+            this.gameUI?.open('shop', 'market');
+            return;
+        }
+
         if (target.type === 'field' && !target.data.purchased) {
             const modal = document.getElementById('purchase-modal');
             if (modal) {
@@ -1656,6 +1661,16 @@ class MyFarmApp {
             }
         }
 
+        // 🛒 كشك السوق — قرب حقيقي يفتح تبويب السوق.
+        const marketPos = this.environment?.buildings?.marketPos;
+        if (marketPos) {
+            const mDist = Math.hypot(playerPos.x - marketPos.x, playerPos.z - marketPos.z);
+            if (mDist < 3.0 && mDist < minDist) {
+                minDist = mDist;
+                closestTarget = { type: 'market' };
+            }
+        }
+
         for (const [fieldId, entry] of this.fieldMeshes.entries()) {
             const field = entry.fieldData;
             if (!field) continue;
@@ -1722,6 +1737,11 @@ class MyFarmApp {
                 promptDesc.textContent = open ? 'أغلق الباب لتأمين المبنى' : 'ادخل المبنى أو أغلقه بعد المرور';
                 promptBtn.textContent = open ? 'إغلاق الباب' : 'فتح الباب';
                 promptBtn.style.background = 'linear-gradient(180deg, #c48a3a 0%, #8a5520 100%)';
+            } else if (closestTarget.type === 'market') {
+                promptTitle.textContent = '🛒 سوق المزرعة';
+                promptDesc.textContent = 'اعرض محاصيلك ومنتجاتك للبيع والشراء';
+                promptBtn.textContent = 'فتح السوق 🛒';
+                promptBtn.style.background = 'linear-gradient(180deg, #ab6cf2 0%, #7b3fd4 100%)';
             } else if (closestTarget.type === 'field') {
                 const f = closestTarget.data;
                 if (!f.purchased) {
@@ -1910,13 +1930,30 @@ class MyFarmApp {
     }
 
     handleTap(clientX, clientY) {
-        if (!this.productionYard || !this.camera) return;
-        const hit = this.productionYard.pick(clientX, clientY, this.camera);
+        if (!this.camera) return;
+        const hit = this.productionYard?.pick(clientX, clientY, this.camera);
         if (hit) {
             Events.emit('production:building-selected', hit);
-        } else {
-            Events.emit('production:deselect');
+            return;
         }
+        // النقر على كشك السوق يفتح تبويب السوق مباشرة.
+        if (this._tapHitsMarket(clientX, clientY)) {
+            this.gameUI?.open('shop', 'market');
+            return;
+        }
+        Events.emit('production:deselect');
+    }
+
+    _tapHitsMarket(clientX, clientY) {
+        const mg = this.environment?.buildings?.marketGroup;
+        if (!mg) return false;
+        this._tapRay = this._tapRay || new THREE.Raycaster();
+        this._tapPtr = this._tapPtr || new THREE.Vector2();
+        const w = window.innerWidth || 1;
+        const h = window.innerHeight || 1;
+        this._tapPtr.set((clientX / w) * 2 - 1, -(clientY / h) * 2 + 1);
+        this._tapRay.setFromCamera(this._tapPtr, this.camera);
+        return this._tapRay.intersectObject(mg, true).length > 0;
     }
 
     /** تركيز مؤقت للكاميرا على المبنى المختار (~1.9 ثانية) */
@@ -2168,6 +2205,11 @@ class MyFarmApp {
             this.scene.fog.color.copy(this._skyScratch);
             this.scene.fog.density = 0.012 + (1 - dayFactor) * 0.022;
         }
+
+        // --- مصابيح الليل الدافئة (مطفأة نهارًا) ---
+        try {
+            this.environment?.buildings?.setNightFactor?.(1 - dayFactor);
+        } catch (e) { /* المصابيح ديكور — لا تكسر الإقلاع */ }
 
         // --- ساعة الـ HUD + رمز الوقت ---
         this.hud?.updateClock?.(
