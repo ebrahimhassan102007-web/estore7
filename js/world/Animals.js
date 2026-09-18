@@ -450,7 +450,7 @@ export class Animals {
             M(0x8a6a44)
         );
         floor.rotation.x = -Math.PI / 2;
-        floor.position.y = 0.02;
+        floor.position.y = 0.035; // فوق الممرات (0.02) — بلا z-fighting
         floor.receiveShadow = true;
         pen.add(floor);
 
@@ -568,8 +568,8 @@ export class Animals {
         this.spawn('pig', -15, 9.8, 0.9, 1.9);
         this.spawn('sheep', -16.5, 0.2, 1.0, 1.8);
         this.spawn('sheep', -15, 1.8, 0.85, 1.8);
-        this.spawn('cow', 13, -4.2, 1.15, 2.0);
-        this.spawn('cow', 15, -3.4, 0.95, 2.0);
+        this.spawn('cow', 13, -4.2, 1.15, 1.9);
+        this.spawn('cow', 15, -3.8, 0.95, 1.9);
         this.spawn('chicken', -6.3, -9.2, 0.9, 1.5);
         this.spawn('rooster', -5.3, -8.4, 0.95, 1.5);
         this.spawn('chicken', -6.8, -8.3, 0.8, 1.5);
