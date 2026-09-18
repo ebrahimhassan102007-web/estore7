@@ -1,6 +1,14 @@
 /**
  * AnimalSystem.js — Animals, Feeding & Products
  * Handles animal purchase, feeding, production and collection.
+ *
+ * مذكرة تصميم — التكاثر/الولادة (مؤجّل عمدًا، لا يُنفَّذ الآن):
+ *   الفكرة المقترحة: حيوانان بالغان من نفس النوع + شبعان معًا داخل
+ *   حظيرتهما ⇒ بعد N دقيقة يظهر صغير (scale 0.5) بلا إنتاج حتى يكبر.
+ *   أُجّل لأن ولادة مجسم جديد تعني: تبنّي AnimalSystem.adopt + ربط
+ *   rig جديد + حفظ rigIndex + مزامنة الحذف — أي لمس مباشر لمنطق
+ *   الإنتاج والربط الحالي. الحلقة الحالية (إطعام ⇒ انتظار ⇒ جمع)
+ *   تبقى كما هي حتى يُبنى ذلك باختبار حقيقي.
  */
 
 import { Events } from '../core/EventBus.js';
@@ -51,7 +59,7 @@ class AnimalSystemService {
         if (animalData.unlockLevel > level) {
             return {
                 success: false,
-                error: `Need level ${animalData.unlockLevel}`
+                error: `يتطلب المستوى ${animalData.unlockLevel}`
             };
         }
 

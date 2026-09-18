@@ -97,7 +97,8 @@ export const ITEMS = Object.freeze({
     // ---- Animal products ----
     egg:  { id: 'egg',  name: 'بيض',  nameEn: 'Egg',  icon: '🥚', category: 'animal', sellPrice: 60 },
     milk: { id: 'milk', name: 'حليب', nameEn: 'Milk', icon: '🥛', category: 'animal', sellPrice: 140 },
-    wool: { id: 'wool', name: 'صوف',  nameEn: 'Wool', icon: '🧶', category: 'animal', sellPrice: 220 }
+    wool: { id: 'wool', name: 'صوف',  nameEn: 'Wool', icon: '🧶', category: 'animal', sellPrice: 220 },
+    truffle: { id: 'truffle', name: 'كمأة', nameEn: 'Truffle', icon: '🍄', category: 'animal', sellPrice: 180 }
 });
 
 /* ============================================================
@@ -185,6 +186,18 @@ export const BUILDINGS = Object.freeze({
         cost: { coins: 7500, gems: 0 },
         buildTime: 300,
         unlockLevel: 7,
+        size: { w: 2, d: 2 }
+    },
+    pig_sty: {
+        id: 'pig_sty',
+        name: 'زريبة الخنازير',
+        nameEn: 'Pig Sty',
+        icon: '🐷',
+        category: 'animal_home',
+        description: 'مأوى الخنازير لإنتاج الكمأة.',
+        cost: { coins: 2500, gems: 0 },
+        buildTime: 120,
+        unlockLevel: 4,
         size: { w: 2, d: 2 }
     }
 });
@@ -352,6 +365,18 @@ export const ANIMALS = Object.freeze({
         feed: 'wheat',
         unlockLevel: 7,
         cost: { coins: 1500, gems: 0 }
+    },
+    pig: {
+        id: 'pig',
+        name: 'خنزير',
+        nameEn: 'Pig',
+        icon: '🐷',
+        home: 'pig_sty',
+        product: 'truffle',
+        productionTime: 300,
+        feed: 'corn',
+        unlockLevel: 4,
+        cost: { coins: 1200, gems: 0 }
     }
 });
 

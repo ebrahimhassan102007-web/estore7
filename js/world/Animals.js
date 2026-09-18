@@ -8,7 +8,7 @@
  */
 
 import * as THREE from 'three';
-import { mergeDeep } from './MergeUtils.js';
+import { mergeDeep, mergeGroupChildren } from './MergeUtils.js';
 
 const M = (color, extra = {}) =>
     new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...extra });
@@ -123,7 +123,9 @@ class AnimalRig {
         this.part(new THREE.BoxGeometry(1.85, 1.05, 0.95), hide, [0, 0, 0], body);
         this.part(new THREE.SphereGeometry(0.28, 8, 6), dark, [-0.45, 0.22, 0.38], body);
         this.part(new THREE.SphereGeometry(0.22, 8, 6), dark, [0.55, -0.1, -0.32], body);
-        this.part(new THREE.SphereGeometry(0.16, 7, 5), pink, [0, -0.52, 0.12], body);
+        // ضرع + جرس: صورة بقر مقروءة حتى low-poly.
+        this.part(new THREE.SphereGeometry(0.17, 8, 6), pink, [0, -0.56, -0.08], body);
+        this.part(new THREE.BoxGeometry(0.11, 0.13, 0.06), M(0xd4a017, { metalness: 0.5, roughness: 0.4 }), [0, -0.42, 0.52], body);
 
         const neck = new THREE.Group();
         neck.position.set(0, 0.35, 0.55);
@@ -142,9 +144,9 @@ class AnimalRig {
         earR.rotation.z = -0.4;
         this.parts.ears = [earL, earR];
 
-        const hornL = this.part(new THREE.ConeGeometry(0.06, 0.28, 6), horn, [-0.22, 0.42, 0.05], head);
+        const hornL = this.part(new THREE.ConeGeometry(0.07, 0.36, 6), horn, [-0.22, 0.46, 0.05], head);
         hornL.rotation.z = 0.45;
-        const hornR = this.part(new THREE.ConeGeometry(0.06, 0.28, 6), horn, [0.22, 0.42, 0.05], head);
+        const hornR = this.part(new THREE.ConeGeometry(0.07, 0.36, 6), horn, [0.22, 0.46, 0.05], head);
         hornR.rotation.z = -0.45;
 
         [[-0.42, -0.32], [0.42, -0.32], [-0.42, 0.32], [0.42, 0.32]].forEach(([lx, lz]) => {
@@ -180,6 +182,9 @@ class AnimalRig {
         this.parts.head = head;
         const snout = this.part(new THREE.CylinderGeometry(0.14, 0.17, 0.16, 8), pink, [0, -0.02, 0.38], head);
         snout.rotation.x = Math.PI / 2;
+        // حلقة خطم داكنة تُبرز الأنف.
+        const snoutRing = this.part(new THREE.CylinderGeometry(0.145, 0.145, 0.05, 8), M(0xc96f61), [0, -0.02, 0.44], head);
+        snoutRing.rotation.x = Math.PI / 2;
         this.part(new THREE.SphereGeometry(0.03, 5, 4), dark, [-0.05, 0.02, 0.47], head);
         this.part(new THREE.SphereGeometry(0.03, 5, 4), dark, [0.05, 0.02, 0.47], head);
         this.part(new THREE.SphereGeometry(0.045, 6, 5), dark, [-0.12, 0.12, 0.28], head);
@@ -223,6 +228,8 @@ class AnimalRig {
 
         const head = this.part(new THREE.BoxGeometry(0.38, 0.42, 0.48), dark, [0, 0.02, 0.28], neck);
         this.parts.head = head;
+        // قبعة صوف فوق الرأس — خروف لا ماعز.
+        this.part(new THREE.SphereGeometry(0.17, 7, 5), wool, [0, 0.24, 0.05], head);
         this.part(new THREE.SphereGeometry(0.04, 6, 5), M(0x111111), [-0.1, 0.1, 0.25], head);
         this.part(new THREE.SphereGeometry(0.04, 6, 5), M(0x111111), [0.1, 0.1, 0.25], head);
 
@@ -423,16 +430,149 @@ export class Animals {
         return rig;
     }
 
+    /**
+     * حظيرة: أرضية ترابية + سياج خشبي ببوابة مفتوحة + مأوى اختياري.
+     * البوابة بلا تصادم (يدخلها اللاعب)، وبقية الأضلاع مصدات.
+     */
+    buildPen({ id, x, z, w, d, gate = 'east', shelter = null }) {
+        const pen = new THREE.Group();
+        pen.name = id;
+        pen.position.set(x, 0, z);
+        this.group.add(pen);
+
+        const hw = w / 2;
+        const hd = d / 2;
+        const wood = M(0x9a683e);
+        const gw = 0.95; // نصف عرض البوابة
+
+        const floor = new THREE.Mesh(
+            new THREE.PlaneGeometry(w, d),
+            M(0x8a6a44)
+        );
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.y = 0.035; // فوق الممرات (0.02) — بلا z-fighting
+        floor.receiveShadow = true;
+        pen.add(floor);
+
+        const post = (px, pz, h = 1.1) => {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(0.14, h, 0.14), wood);
+            m.position.set(px, h / 2, pz);
+            m.castShadow = true;
+            pen.add(m);
+        };
+        const railX = (x1, x2, zz, y) => {
+            if (x2 - x1 < 0.3) return;
+            const m = new THREE.Mesh(new THREE.BoxGeometry(x2 - x1, 0.1, 0.1), wood);
+            m.position.set((x1 + x2) / 2, y, zz);
+            pen.add(m);
+        };
+        const railZ = (z1, z2, xx, y) => {
+            if (z2 - z1 < 0.3) return;
+            const m = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, z2 - z1), wood);
+            m.position.set(xx, y, (z1 + z2) / 2);
+            pen.add(m);
+        };
+        const sideX = (zz) => {
+            for (let px = -hw; px <= hw + 0.01; px += 1.7) post(px, zz);
+            railX(-hw, hw, zz, 0.78);
+            railX(-hw, hw, zz, 0.42);
+        };
+        const sideZFull = (xx) => {
+            for (let pz = -hd; pz <= hd + 0.01; pz += 1.7) post(xx, pz);
+            railZ(-hd, hd, xx, 0.78);
+            railZ(-hd, hd, xx, 0.42);
+        };
+        const sideZGate = (xx) => {
+            for (let pz = -hd; pz <= hd + 0.01; pz += 1.7) {
+                if (Math.abs(pz) > gw + 0.4) post(xx, pz);
+            }
+            post(xx, -gw, 1.35);
+            post(xx, gw, 1.35);
+            railZ(-hd, -gw, xx, 0.78);
+            railZ(-hd, -gw, xx, 0.42);
+            railZ(gw, hd, xx, 0.78);
+            railZ(gw, hd, xx, 0.42);
+        };
+
+        sideX(-hd);
+        sideX(hd);
+        if (gate === 'west') {
+            sideZGate(-hw);
+            sideZFull(hw);
+        } else {
+            sideZFull(-hw);
+            sideZGate(hw);
+        }
+
+        // مأوى صغير داخل الحظيرة.
+        if (shelter === 'sty') {
+            const sx = -hw + 1.6;
+            const sz = -hd + 1.4;
+            [[-1, -0.8], [1, -0.8], [-1, 0.8], [1, 0.8]].forEach(([ox, oz]) => {
+                const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.0, 0.14), wood);
+                leg.position.set(sx + ox, 0.5, sz + oz);
+                pen.add(leg);
+            });
+            const roof = new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.12, 2.1), M(0x6b4423));
+            roof.position.set(sx, 1.05, sz);
+            roof.rotation.z = 0.06;
+            roof.castShadow = true;
+            pen.add(roof);
+        } else if (shelter === 'coop') {
+            const hut = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.0, 1.3), M(0xa8432a));
+            hut.position.set(-hw + 1.2, 0.5, -hd + 1.1);
+            hut.castShadow = true;
+            pen.add(hut);
+            const cap = new THREE.Mesh(new THREE.ConeGeometry(1.25, 0.7, 4), wood);
+            cap.position.set(-hw + 1.2, 1.35, -hd + 1.1);
+            cap.rotation.y = Math.PI / 4;
+            cap.castShadow = true;
+            pen.add(cap);
+            if (this.collision) {
+                this.collision.addBox({
+                    id: id + '-hut',
+                    x: x - hw + 1.2,
+                    z: z - hd + 1.1,
+                    width: 1.5,
+                    depth: 1.3,
+                    height: 1.6,
+                    tag: 'prop'
+                });
+            }
+        }
+
+        if (this.collision) {
+            const walls = this.collision.addBuildingWalls({
+                id, x, z,
+                width: w,
+                depth: d,
+                thickness: 0.3,
+                height: 1.1,
+                door: { side: gate, width: gw * 2 }
+            });
+            // بوابة الحظيرة مفتوحة دائمًا — يدخلها اللاعب للإطعام والجمع.
+            if (walls.door) walls.door.solid = false;
+        }
+
+        mergeGroupChildren(pen, { name: id + '-merged' });
+    }
+
     build() {
-        this.spawn('pig', -15, 7, 1.05, 2.6);
-        this.spawn('pig', -18, 9, 0.9, 2.6);
-        this.spawn('sheep', -8, -1, 1.0, 2.4);
-        this.spawn('sheep', -11, 1, 0.85, 2.4);
-        this.spawn('cow', 14, 4, 1.1, 2.8);
-        this.spawn('cow', 18, 6, 0.9, 2.8);
-        this.spawn('chicken', 2, 3, 0.85, 2.2);
-        this.spawn('rooster', -2, 1, 0.95, 2.2);
-        this.spawn('chicken', 0.6, 1.6, 0.75, 2.0);
+        // الحظائر غربًا (خنازير/أغنام/دجاج) + الأبقار قرب الحظيرة الحمراء.
+        this.buildPen({ id: 'pen-pig', x: -16, z: 9, w: 7, d: 6, gate: 'east', shelter: 'sty' });
+        this.buildPen({ id: 'pen-sheep', x: -16, z: 1, w: 7, d: 6, gate: 'east' });
+        this.buildPen({ id: 'pen-cow', x: 14, z: -4, w: 8, d: 5, gate: 'west' });
+        this.buildPen({ id: 'pen-chicken', x: -6, z: -9, w: 5.5, d: 4.5, gate: 'east', shelter: 'coop' });
+
+        this.spawn('pig', -16.5, 8.2, 1.05, 1.9);
+        this.spawn('pig', -15, 9.8, 0.9, 1.9);
+        this.spawn('sheep', -16.5, 0.2, 1.0, 1.8);
+        this.spawn('sheep', -15, 1.8, 0.85, 1.8);
+        this.spawn('cow', 13, -4.2, 1.15, 1.9);
+        this.spawn('cow', 15, -3.8, 0.95, 1.9);
+        this.spawn('chicken', -6.3, -9.2, 0.9, 1.5);
+        this.spawn('rooster', -5.3, -8.4, 0.95, 1.5);
+        this.spawn('chicken', -6.8, -8.3, 0.8, 1.5);
     }
 
     update(t, delta = 0.016) {

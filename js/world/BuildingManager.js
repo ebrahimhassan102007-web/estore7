@@ -6,7 +6,7 @@
 
 import * as THREE from 'three';
 import { InteractiveDoor } from './Doors.js';
-import { mergeGroupChildren } from './MergeUtils.js';
+import { mergeGroupChildren, mergeMeshes, mergeSubtree } from './MergeUtils.js';
 
 const mat = (color, roughness = 0.85, metalness = 0) =>
     new THREE.MeshStandardMaterial({ color, roughness, metalness });
@@ -40,6 +40,7 @@ export class BuildingManager {
         this.market();
         this.fences();
         this.sign();
+        this.lamps();
     }
 
     farmhouse() {
@@ -137,11 +138,12 @@ export class BuildingManager {
             doorCollider = walls.door;
         }
 
+        // بابا الحظيرة من الخشب الحقيقي يفتحان للخارج (لا X عائمًا).
         const left = new InteractiveDoor({
             parent: g,
             hinge: { x: -3.0, y: 0.12, z: 3.55 },
             size: { w: 2.95, h: 4.0, d: 0.14 },
-            material: darkRed,
+            material: wood,
             openAngle: Math.PI * 0.78,
             id: 'barn-door-left',
             label: 'باب الحظيرة',
@@ -152,7 +154,7 @@ export class BuildingManager {
             parent: g,
             hinge: { x: 3.0, y: 0.12, z: 3.55 },
             size: { w: 2.95, h: 4.0, d: 0.14 },
-            material: red,
+            material: wood,
             openAngle: -Math.PI * 0.78,
             id: 'barn-door-right',
             label: 'باب الحظيرة',
@@ -164,12 +166,34 @@ export class BuildingManager {
         right.handle.position.x = -0.22;
         this.doors.push(left, right);
 
-        for (const x of [-1.7, 1.7]) {
-            const a = box(g, [0.18, 4, 0.2], [x, 2.1, 3.72], white);
-            a.rotation.z = 0.62;
-            const b = a.clone();
-            b.rotation.z = -0.62;
-            g.add(b);
+        // عوارض أفقية على كل ضلفة — أبناء الـ pivot فيتحركون مع الباب.
+        const battenMat = mat(0x40220f);
+        const battens = [
+            [left.pivot, 2.95 * 0.5],
+            [right.pivot, -2.95 * 0.5]
+        ];
+        for (const [pivot, cx] of battens) {
+            for (const y of [1.0, 2.1, 3.2]) {
+                const batten = new THREE.Mesh(
+                    new THREE.BoxGeometry(2.7, 0.16, 0.05),
+                    battenMat
+                );
+                batten.position.set(cx, y, 0.09);
+                batten.castShadow = true;
+                pivot.add(batten);
+            }
+        }
+
+        // شرفة واضحة أمام الباب (بلاطة + عمودان + سقف صغير).
+        const stoneMat = mat(0x8d8578);
+        box(g, [7.2, 0.12, 2.6], [0, 0.06, 4.9], stoneMat);
+        box(g, [0.25, 3.1, 0.25], [-3.2, 1.55, 5.9], white);
+        box(g, [0.25, 3.1, 0.25], [3.2, 1.55, 5.9], white);
+        box(g, [7.6, 0.16, 3.0], [0, 3.2, 4.9], mat(0x3a3430));
+
+        if (this.collision) {
+            this.collision.addBox({ id: 'barn-porch-l', x: 14 - 3.2, z: -12 + 5.9, width: 0.4, depth: 0.4, height: 3.1, tag: 'prop' });
+            this.collision.addBox({ id: 'barn-porch-r', x: 14 + 3.2, z: -12 + 5.9, width: 0.4, depth: 0.4, height: 3.1, tag: 'prop' });
         }
 
         this.group.add(g);
@@ -222,36 +246,74 @@ export class BuildingManager {
     }
 
     windmill() {
+        // طاحونة هواء أكبر: قاعدة حجرية + برج خشبي + سقف + 4 شفرات خشب
+        // بأشرعة تدور ككتلة واحدة مدموجة (mergeSubtree يحفظ الدوران).
         const g = new THREE.Group();
         g.name = 'Windmill';
         g.position.set(5, 0, -22);
 
+        const stone = mat(0x8d8578);
         const wood = mat(0x5c432c);
-        for (const x of [-1, 1]) {
-            const p = box(g, [0.22, 7, 0.22], [x, 3.5, 0], wood);
-            p.rotation.z = x * 0.16;
+        const cream = mat(0xe8d9b8);
+        const sailMat = mat(0xf3ead3);
+
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 2.1, 1.2, 10), stone);
+        base.position.y = 0.6;
+        base.castShadow = true;
+        base.receiveShadow = true;
+        g.add(base);
+
+        const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.5, 5.5, 10), cream);
+        tower.position.y = 3.95;
+        tower.castShadow = true;
+        tower.receiveShadow = true;
+        g.add(tower);
+
+        for (const y of [2.4, 4.6]) {
+            const band = new THREE.Mesh(new THREE.CylinderGeometry(1.32, 1.42, 0.22, 10), wood);
+            band.position.y = y;
+            g.add(band);
         }
 
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(1.35, 1.3, 10), wood);
+        roof.position.y = 7.35;
+        roof.castShadow = true;
+        g.add(roof);
+
+        const door = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.5, 0.15), wood);
+        door.position.set(0, 1.85, 1.28);
+        g.add(door);
+
         const rotor = new THREE.Group();
-        rotor.position.set(0, 6.4, 0.25);
-        for (let i = 0; i < 8; i++) {
-            const blade = box(rotor, [0.22, 3.6, 0.12], [0, 1.8, 0], mat(0xc1b69b));
-            const ang = (i * Math.PI) / 4;
-            blade.rotation.z = ang;
-            blade.position.set(-Math.sin(ang) * 1.8, Math.cos(ang) * 1.8, 0);
+        rotor.position.set(0, 6.1, 1.45);
+        const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.4, 10), wood);
+        hub.rotation.x = Math.PI / 2;
+        rotor.add(hub);
+        for (let i = 0; i < 4; i++) {
+            const arm = new THREE.Group();
+            arm.rotation.z = (i * Math.PI) / 2;
+            const spar = new THREE.Mesh(new THREE.BoxGeometry(0.14, 4.6, 0.1), wood);
+            spar.position.y = 2.3;
+            spar.castShadow = true;
+            arm.add(spar);
+            const sail = new THREE.Mesh(new THREE.BoxGeometry(1.05, 3.3, 0.05), sailMat);
+            sail.position.set(0.58, 2.75, 0);
+            sail.castShadow = true;
+            arm.add(sail);
+            rotor.add(arm);
         }
         g.add(rotor);
         this.rotors.push(rotor);
-        mergeGroupChildren(rotor, { name: 'Windmill-blades' });
+        mergeSubtree(rotor, { name: 'Windmill-blades' });
 
         if (this.collision) {
             this.collision.addBox({
                 id: 'windmill',
                 x: 5,
                 z: -22,
-                width: 2.2,
-                depth: 2.2,
-                height: 7,
+                width: 3.4,
+                depth: 3.4,
+                height: 8,
                 tag: 'building'
             });
         }
@@ -261,53 +323,100 @@ export class BuildingManager {
     }
 
     market() {
+        // كشك سوق حقيقي في منطقة السوق جنوب-غرب الوسط: أعمدة + عداد +
+        // مظلة مخططة مائلة + صناديق خضار low-poly + لافتة عربية.
         const g = new THREE.Group();
         g.name = 'Market';
-        g.position.set(8, 0, 11);
+        g.position.set(-4, 0, 17);
 
         const wood = mat(0x84502a);
-        box(g, [5, 1.3, 2.4], [0, 0.65, 0], wood);
-        [-2, 2].forEach((x) => box(g, [0.18, 4, 0.18], [x, 2, 0], wood));
-        box(g, [5.5, 0.25, 3], [0, 4, 0], mat(0xf0eee3));
-        for (let x = -2.25; x < 2.5; x += 1) {
-            box(g, [0.5, 0.28, 3.05], [x, 4.03, 0], mat(0xe47b2f));
+        const darkWood = mat(0x6b3d20);
+        const cream = mat(0xf3ead3);
+        const red = mat(0xc0392b);
+
+        box(g, [5.4, 0.22, 3.4], [0, 0.11, 0], darkWood); // منصة
+        [[-2.3, -1.3], [2.3, -1.3], [-2.3, 1.3], [2.3, 1.3]].forEach(([x, z]) => {
+            box(g, [0.22, 3.4, 0.22], [x, 1.8, 0 + z], wood);
+        });
+        // العداد على جهة المزرعة (الشمال) حيث يقف اللاعب.
+        box(g, [4.4, 0.85, 1.1], [0, 0.65, -0.85], wood); // واجهة العداد
+        box(g, [4.4, 0.12, 1.3], [0, 1.14, -0.85], darkWood); // سطح العداد
+        box(g, [4.4, 0.5, 0.15], [0, 0.55, -1.45], darkWood); // حاجز أمامي
+
+        // مظلة مخططة مائلة قليلًا للأمام.
+        const awning = new THREE.Group();
+        awning.position.set(0, 3.62, 0.15);
+        awning.rotation.x = -0.1;
+        g.add(awning);
+        for (let i = 0; i < 8; i++) {
+            const x = -2.45 + i * 0.7;
+            box(awning, [0.68, 0.1, 3.8], [x, 0, 0], i % 2 ? red : cream);
+        }
+        mergeGroupChildren(awning, { name: 'Market-awning' });
+
+        // 3 صناديق خضار على العداد — مجسمات حقيقية لا إيموجي طافيًا.
+        const produce = [
+            { x: -1.45, kinds: [0xe53935, 0xe53935, 0xd32f2f], geo: () => new THREE.SphereGeometry(0.11, 7, 6) },
+            { x: 0, kinds: [0xf5c542, 0xf5c542, 0xe9a020], geo: () => new THREE.ConeGeometry(0.09, 0.26, 7) },
+            { x: 1.45, kinds: [0xff7043, 0xff7043, 0xe5632e], geo: () => new THREE.ConeGeometry(0.1, 0.24, 7) }
+        ];
+        for (const crate of produce) {
+            box(g, [0.85, 0.22, 0.6], [crate.x, 1.3, -0.85], darkWood);
+            crate.kinds.forEach((color, i) => {
+                const veg = new THREE.Mesh(crate.geo(), mat(color, 0.6));
+                veg.position.set(crate.x - 0.2 + i * 0.2, 1.5, -0.85 - (i % 2) * 0.14);
+                veg.castShadow = true;
+                g.add(veg);
+            });
         }
 
-        ['🍅', '🌽', '🥕'].forEach((emoji, i) => {
-            const c = document.createElement('canvas');
-            c.width = c.height = 64;
-            const ctx = c.getContext('2d');
-            ctx.font = '44px sans-serif';
-            ctx.fillText(emoji, 8, 48);
-            const sprite = new THREE.Sprite(
-                new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c) })
-            );
-            sprite.position.set(i * 1.3 - 1.3, 1.6, 1.3);
-            sprite.scale.set(0.8, 0.8, 1);
-            g.add(sprite);
-        });
+        // لافتة «سوق المزرعة».
+        const c = document.createElement('canvas');
+        c.width = 1024;
+        c.height = 256;
+        const ctx = c.getContext('2d');
+        ctx.clearRect(0, 0, c.width, c.height);
+        ctx.fillStyle = '#4a2c10';
+        ctx.font = '900 120px Tajawal, "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('سوق المزرعة', 512, 134);
+        const tex = new THREE.CanvasTexture(c);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        const board = new THREE.Mesh(
+            new THREE.PlaneGeometry(2.9, 0.72),
+            new THREE.MeshBasicMaterial({ map: tex, transparent: true })
+        );
+        board.position.set(0, 3.0, -1.55);
+        board.rotation.y = Math.PI; // تواجه المزرعة (اللاعب يأتي من الشمال)
+        board.userData.noMerge = true; // شفاف — الدمج يتجاهله أصلًا
+        g.add(board);
 
         if (this.collision) {
             this.collision.addBox({
                 id: 'market',
-                x: 8,
-                z: 11,
-                width: 5.2,
-                depth: 2.6,
-                height: 2,
+                x: -4,
+                z: 17,
+                width: 5.6,
+                depth: 3.6,
+                height: 2.5,
                 tag: 'building'
             });
         }
 
         this.group.add(g);
         mergeGroupChildren(g, { name: 'Market-body' });
+        this.marketGroup = g;
+        this.marketPos = new THREE.Vector3(-4, 0, 15.2);
     }
 
     fences() {
         const wood = mat(0xf2eee0);
         const gap = 3.4;
 
-        for (const z of [-5, 18]) {
+        // السور الجنوبي أُبعد إلى z=25: منطقة الحقول (حتى z≈23) والسوق
+        // والحظائر كلها داخله، وقوس الترحيب يقف في فجوة بوابته.
+        for (const z of [-5, 25]) {
             for (let x = -27; x <= 27; x += 3) {
                 if (Math.abs(x) < gap) continue;
                 box(this.group, [0.16, 1.6, 0.16], [x, 0.8, z], wood);
@@ -347,38 +456,111 @@ export class BuildingManager {
     }
 
     sign() {
+        // قوس ترحيب خشبي في فجوة السور الجنوبي — المزارع يمر من تحته.
         const g = new THREE.Group();
-        g.position.set(0, 0, 7);
-        box(g, [0.22, 2.5, 0.22], [0, 1.25, 0], mat(0x60401f));
-        box(g, [5, 1.15, 0.22], [0, 2.2, 0], mat(0x8b572c));
+        g.position.set(0, 0, 25);
+        const postMat = mat(0x60401f);
+        box(g, [0.3, 3.7, 0.3], [-2.6, 1.85, 0], postMat);
+        box(g, [0.3, 3.7, 0.3], [2.6, 1.85, 0], postMat);
+        box(g, [6.4, 1.2, 0.24], [0, 3.4, 0], mat(0x8b572c));
+        box(g, [6.9, 0.16, 1.0], [0, 4.08, 0], mat(0x5c3a1c));
 
+        // لوحة قماشية أكبر (2048px) حتى يُقرأ النص من بعيد دون انضغاط:
+        // نسبة اللوحة 6.4/1.2 = 5.33 = نسبة الرسم تمامًا.
         const c = document.createElement('canvas');
-        c.width = 1024;
-        c.height = 220;
+        c.width = 2048;
+        c.height = 384;
         const ctx = c.getContext('2d');
+        ctx.clearRect(0, 0, c.width, c.height);
         ctx.fillStyle = '#fff3c9';
-        ctx.font = 'bold 66px Tajawal, sans-serif';
+        ctx.font = '900 150px Tajawal, "Segoe UI", sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('مزرعتك - انت تستحق الأفضل ❤️', 512, 140);
+        ctx.textBaseline = 'middle';
+        ctx.fillText('مزرعتك انت تستحق الأفضل', 1024, 200);
+        const tex = new THREE.CanvasTexture(c);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = 4;
         const sprite = new THREE.Sprite(
-            new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true })
+            new THREE.SpriteMaterial({ map: tex, transparent: true })
         );
-        sprite.position.set(0, 2.2, 0.14);
-        sprite.scale.set(4.7, 1, 1);
+        // الـ Sprite يواجه الكاميرا دائمًا فيُقرأ من الجهتين.
+        sprite.position.set(0, 3.4, 0);
+        sprite.scale.set(6.1, 1.145, 1);
         g.add(sprite);
         this.group.add(g);
         mergeGroupChildren(g, { name: 'Sign-body' });
 
+        // تصادم على العمودين فقط — المنتصف مفتوح للمرور.
         if (this.collision) {
-            this.collision.addBox({
-                id: 'sign',
-                x: 0,
-                z: 7,
-                width: 0.5,
-                depth: 0.5,
-                height: 2.5,
-                tag: 'prop'
-            });
+            this.collision.addBox({ id: 'sign-post-l', x: -2.6, z: 25, width: 0.5, depth: 0.5, height: 3.7, tag: 'prop' });
+            this.collision.addBox({ id: 'sign-post-r', x: 2.6, z: 25, width: 0.5, depth: 0.5, height: 3.7, tag: 'prop' });
+        }
+    }
+
+    /**
+     * مصابيح دافئة قرب البيت والحظيرة والطاحونة والسوق — مطفأة نهارًا،
+     * تتوهج ليلًا عبر setNightFactor من دورة النهار/الليل في main.js.
+     * الأعمدة تُدمج في mesh واحد؛ الرؤوس تبقى بمادة مشتركة واحدة
+     * (4 نداءات رسم فقط) حتى يتغير توهجها معًا.
+     */
+    lamps() {
+        this.lampLights = [];
+        this.lampHeadMat = new THREE.MeshStandardMaterial({
+            color: 0xffe2a8,
+            emissive: 0xff9d2e,
+            emissiveIntensity: 0,
+            roughness: 0.5
+        });
+        const postMat = mat(0x3a3f45, 0.6, 0.4);
+        const positions = [
+            [-10, -8],    // قرب البيت
+            [10.5, -8],   // قرب الحظيرة
+            [-1.5, 6.5],  // قرب طاحونة الحبوب
+            [-1.2, 14.6]  // قرب السوق
+        ];
+        const posts = [];
+        for (let i = 0; i < positions.length; i++) {
+            const x = positions[i][0];
+            const z = positions[i][1];
+            const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.13, 3.2, 7), postMat);
+            post.position.set(x, 1.6, z);
+            post.castShadow = true;
+            this.group.add(post);
+            posts.push(post);
+            const cap = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.28, 8), postMat);
+            cap.position.set(x, 3.62, z);
+            this.group.add(cap);
+            posts.push(cap);
+
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.21, 10, 8), this.lampHeadMat);
+            head.position.set(x, 3.32, z);
+            this.group.add(head);
+
+            const light = new THREE.PointLight(0xffb45e, 0, 11, 2);
+            light.position.set(x, 3.2, z);
+            this.group.add(light);
+            this.lampLights.push(light);
+
+            if (this.collision) {
+                this.collision.addBox({
+                    id: 'lamp-' + i,
+                    x, z,
+                    width: 0.4,
+                    depth: 0.4,
+                    height: 3.4,
+                    tag: 'prop'
+                });
+            }
+        }
+        mergeMeshes(posts, { name: 'Lamps-posts' });
+    }
+
+    /** f من 0 (نهار) إلى 1 (ليل عميق). */
+    setNightFactor(f) {
+        const k = Math.min(1, Math.max(0, f || 0));
+        if (this.lampHeadMat) this.lampHeadMat.emissiveIntensity = k * 1.8;
+        if (this.lampLights) {
+            for (const light of this.lampLights) light.intensity = k * 16;
         }
     }
 
