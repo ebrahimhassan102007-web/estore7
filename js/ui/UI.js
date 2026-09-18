@@ -41,7 +41,7 @@ const AR_ERRORS = {
 
 const PANELS = {
     shop: { title: '🏪 المتجر', tabs: ['seeds', 'land', 'buildings', 'orders', 'market'] },
-    bag: { title: '🎒 المخزن', tabs: ['bag'] },
+    bag: { title: '🎒 المخزن ومستودعات المزرعة', tabs: ['silo', 'barn', 'bag'] },
     map: { title: '🗺️ خريطة المزرعة', tabs: ['map'] },
     menu: { title: '☰ القائمة', tabs: ['menu'] }
 };
@@ -52,7 +52,9 @@ const TAB_LABELS = {
     orders: 'الطلبات',
     market: 'السوق',
     buildings: 'المباني',
-    bag: 'المخزن',
+    silo: '🌾 الصومعة',
+    barn: '🛖 الحظيرة',
+    bag: 'الكل',
     map: 'الخريطة',
     menu: 'الإعدادات'
 };
@@ -251,6 +253,8 @@ export class GameUI {
             case 'buildings': return this._renderBuildings(body);
             case 'orders': return this._renderOrders(body);
             case 'market': return this._renderMarket(body);
+            case 'silo': return this._renderStorageSilo(body);
+            case 'barn': return this._renderStorageBarn(body);
             case 'bag': return this._renderBag(body);
             case 'map': return this._renderMap(body);
             case 'menu': return this._renderMenu(body);
@@ -612,6 +616,135 @@ export class GameUI {
         }
         this._success('🛍️ تم الشراء من السوق');
         this.render();
+    }
+
+    /* ------------------------------ صومعة الغلال (Silo) ------------------------------ */
+    _renderStorageSilo(body) {
+        const stats = InventorySystem.getStorageStats().silo;
+        const header = document.createElement('div');
+        header.className = 'hud-storage-header-card';
+        header.innerHTML = `
+            <div class="storage-card-info">
+                <h3>🌾 صومعة الغلال (المستوى ${stats.level})</h3>
+                <p>مخصصة للمحاصيل الخام فقط (قمح، ذرة، جزر، طماطم). امتلاء الصومعة يمنع الحصاد.</p>
+                <div class="storage-bar-track">
+                    <div class="storage-bar-fill" style="width: ${Math.min(100, Math.round((stats.count / stats.capacity) * 100))}%;"></div>
+                </div>
+                <div class="storage-count-badge">${stats.count} / ${stats.capacity} وحدة (${stats.free} شاغر)</div>
+            </div>
+            <div class="storage-upgrade-box">
+                <div class="upgrade-title">🛠️ ترقية الصومعة (+25 سعة)</div>
+                <div class="upgrade-reqs">
+                    <span>🔩 مسامير: ${InventorySystem.count('nail')}/${stats.req.nail}</span>
+                    <span>🪵 ألواح خشب: ${InventorySystem.count('wood_plank')}/${stats.req.wood_plank}</span>
+                </div>
+                <button type="button" class="btn-upgrade-storage" id="btn-upgrade-silo">ترقية الصومعة</button>
+            </div>
+        `;
+        header.querySelector('#btn-upgrade-silo').addEventListener('click', () => {
+            const res = InventorySystem.upgradeSilo();
+            if (!res.success) {
+                this._error(res.error || 'تعذّرت الترقية');
+                return;
+            }
+            this._success(`✨ تم ترقية صومعة الغلال إلى المستوى ${res.newLevel} (السعة: ${res.newCapacity})`);
+            this.render();
+        });
+        body.appendChild(header);
+
+        // List silo crops only
+        const rows = InventorySystem.list('silo');
+        if (rows.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'hud-sheet-empty';
+            empty.textContent = 'الصومعة فارغة — احصد بعض المحاصيل من الحقول 🌾';
+            body.appendChild(empty);
+            return;
+        }
+
+        rows.forEach((row) => {
+            const line = document.createElement('div');
+            line.className = 'hud-bag-row';
+            line.innerHTML = `
+                <span class="hud-bag-icon">${row.icon}</span>
+                <span class="hud-bag-name">${row.name} <small>(${row.qualityLabel})</small></span>
+                <span class="hud-bag-count">×${row.count}</span>
+                <span class="hud-bag-price">🪙 ${formatNumber(row.sellPrice)}</span>
+            `;
+
+            const sellOne = this._button('بيع', () => this.sellItem(row.id, 1));
+            const sellAll = this._button('الكل', () => this.sellItem(row.id, null));
+            sellAll.classList.add('all');
+
+            line.appendChild(sellOne);
+            line.appendChild(sellAll);
+            body.appendChild(line);
+        });
+    }
+
+    /* ------------------------------ حظيرة المخزن (Barn) ------------------------------ */
+    _renderStorageBarn(body) {
+        const stats = InventorySystem.getStorageStats().barn;
+        const header = document.createElement('div');
+        header.className = 'hud-storage-header-card';
+        header.innerHTML = `
+            <div class="storage-card-info">
+                <h3>🛖 حظيرة المخزن الرئيسي (المستوى ${stats.level})</h3>
+                <p>مخصصة لمنتجات الحيوانات، السلع المصنعة، الألبان، الأعلاف، الأدوات ومواد الترقية.</p>
+                <div class="storage-bar-track">
+                    <div class="storage-bar-fill barn" style="width: ${Math.min(100, Math.round((stats.count / stats.capacity) * 100))}%;"></div>
+                </div>
+                <div class="storage-count-badge">${stats.count} / ${stats.capacity} وحدة (${stats.free} شاغر)</div>
+            </div>
+            <div class="storage-upgrade-box">
+                <div class="upgrade-title">🛠️ ترقية الحظيرة (+25 سعة)</div>
+                <div class="upgrade-reqs">
+                    <span>🔩 مسامير: ${InventorySystem.count('nail')}/${stats.req.nail}</span>
+                    <span>🪵 ألواح: ${InventorySystem.count('wood_plank')}/${stats.req.wood_plank}</span>
+                    <span>🩹 شريط: ${InventorySystem.count('duct_tape')}/${stats.req.duct_tape}</span>
+                </div>
+                <button type="button" class="btn-upgrade-storage" id="btn-upgrade-barn">ترقية الحظيرة</button>
+            </div>
+        `;
+        header.querySelector('#btn-upgrade-barn').addEventListener('click', () => {
+            const res = InventorySystem.upgradeBarn();
+            if (!res.success) {
+                this._error(res.error || 'تعذّرت الترقية');
+                return;
+            }
+            this._success(`✨ تم ترقية الحظيرة إلى المستوى ${res.newLevel} (السعة: ${res.newCapacity})`);
+            this.render();
+        });
+        body.appendChild(header);
+
+        // List barn items only
+        const rows = InventorySystem.list('barn');
+        if (rows.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'hud-sheet-empty';
+            empty.textContent = 'الحظيرة فارغة — أنتج دقيقًا أو أطعم حيواناتك لتخزين منتجاتها 🛖';
+            body.appendChild(empty);
+            return;
+        }
+
+        rows.forEach((row) => {
+            const line = document.createElement('div');
+            line.className = 'hud-bag-row';
+            line.innerHTML = `
+                <span class="hud-bag-icon">${row.icon}</span>
+                <span class="hud-bag-name">${row.name}</span>
+                <span class="hud-bag-count">×${row.count}</span>
+                <span class="hud-bag-price">🪙 ${formatNumber(row.sellPrice)}</span>
+            `;
+
+            const sellOne = this._button('بيع', () => this.sellItem(row.id, 1));
+            const sellAll = this._button('الكل', () => this.sellItem(row.id, null));
+            sellAll.classList.add('all');
+
+            line.appendChild(sellOne);
+            line.appendChild(sellAll);
+            body.appendChild(line);
+        });
     }
 
     /* ------------------------------ المخزن ------------------------------ */

@@ -387,29 +387,23 @@ class AnimalSystemService {
         const productAmount =
             animalData.productAmount || 1;
 
-        const inventory =
-            GameState.get('inventory');
+        const storage = GameState.get('storage') || {};
+        const barnCap = storage.barn?.capacity || GameState.get('inventory.maxCapacity') || 50;
+        const itemsMap = GameState.get('inventory.items') || {};
 
-        const current =
-            Object.values(
-                inventory.items
-            ).reduce(
-                (sum, item) =>
-                    sum + item.count,
-                0
-            );
+        let barnUsed = 0;
+        for (const [id, it] of Object.entries(itemsMap)) {
+            if (!['wheat', 'corn', 'carrot', 'tomato'].includes(id)) {
+                barnUsed += (it?.count || 0);
+            }
+        }
 
-        if (
-            current + productAmount >
-            inventory.maxCapacity
-        ) {
-            Events.emit(
-                'inventory:full'
-            );
-
+        if (barnUsed + productAmount > barnCap) {
+            Events.emit('barn:full');
+            Events.emit('inventory:full', { target: 'barn' });
             return {
                 success: false,
-                error: 'المخزن ممتلئ'
+                error: 'حظيرة المخزن ممتلئة! فرّغ بعض المساحة أولًا (Barn Full)'
             };
         }
 

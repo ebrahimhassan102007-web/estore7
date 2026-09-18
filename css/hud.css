@@ -1091,3 +1091,175 @@
   font-weight: 700;
   color: #6a3e1b;
 }
+
+/* -------------------- CENTER CLUSTER & STORAGE PILLS -------------------- */
+.hud-center-cluster {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.hud-storage-indicators {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  direction: ltr;
+}
+
+.hud-storage-pill {
+  background: rgba(30, 20, 10, 0.92);
+  border: 1.5px solid #d4a359;
+  border-radius: 999px;
+  padding: 2px 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  transition: transform 0.15s, border-color 0.2s, background 0.2s;
+  user-select: none;
+}
+
+.hud-storage-pill:hover {
+  transform: scale(1.05);
+  border-color: #ffd54f;
+}
+
+.hud-storage-pill:active {
+  transform: scale(0.95);
+}
+
+.hud-storage-pill.silo {
+  border-color: #f5a623;
+}
+
+.hud-storage-pill.barn {
+  border-color: #e74c3c;
+}
+
+.hud-storage-pill.is-full {
+  background: rgba(180, 20, 20, 0.95);
+  border-color: #ff4d4d;
+  animation: pulseFull 1s infinite alternate;
+}
+
+@keyframes pulseFull {
+  from { transform: scale(1); box-shadow: 0 0 4px #ff4444; }
+  to { transform: scale(1.06); box-shadow: 0 0 10px #ff0000; }
+}
+
+.hud-storage-pill .storage-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.hud-storage-pill .storage-fill-txt {
+  font-size: 10px;
+  font-weight: 900;
+  color: #fff;
+}
+
+/* -------------------- STORAGE (SILO / BARN) CARDS IN UI -------------------- */
+.hud-storage-header-card {
+  background: linear-gradient(135deg, rgba(60, 38, 18, 0.95), rgba(40, 24, 10, 0.95));
+  border: 2px solid #c8954c;
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.hud-storage-header-card h3 {
+  font-size: 15px;
+  font-weight: 900;
+  color: #ffd54f;
+  margin-bottom: 4px;
+}
+
+.hud-storage-header-card p {
+  font-size: 11px;
+  color: #e0d0b8;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.storage-bar-track {
+  width: 100%;
+  height: 10px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  margin-bottom: 4px;
+}
+
+.storage-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f5a623, #ffcc00);
+  border-radius: inherit;
+  transition: width 0.3s ease;
+}
+
+.storage-bar-fill.barn {
+  background: linear-gradient(90deg, #e74c3c, #f39c12);
+}
+
+.storage-count-badge {
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  direction: ltr;
+  text-align: right;
+  margin-bottom: 8px;
+}
+
+.storage-upgrade-box {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px dashed rgba(255, 213, 79, 0.5);
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.upgrade-title {
+  font-size: 11px;
+  font-weight: 800;
+  color: #ffd54f;
+}
+
+.upgrade-reqs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.btn-upgrade-storage {
+  align-self: flex-start;
+  background: linear-gradient(180deg, #4caf50 0%, #2e7d32 100%);
+  border: 1.5px solid #a5d6a7;
+  border-radius: 8px;
+  color: #fff;
+  font-weight: 900;
+  font-size: 11px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.2s;
+}
+
+.btn-upgrade-storage:hover {
+  transform: scale(1.03);
+}
+
+.btn-upgrade-storage:active {
+  transform: scale(0.96);
+}

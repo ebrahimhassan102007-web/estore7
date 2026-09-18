@@ -38,6 +38,9 @@ const HOTBAR_LAYOUT = [
   { id: 'corn_seed',     name: 'بذور الذرة',   icon: '🌽', type: 'seed', cropType: 'corn',   count: 0 },
   { id: 'carrot_seed',   name: 'بذور الجزر',   icon: '🥕', type: 'seed', cropType: 'carrot', count: 0 },
   { id: 'tomato_seed',   name: 'بذور الطماطم', icon: '🍅', type: 'seed', cropType: 'tomato', count: 0 },
+  { id: 'fertilizer_basic',   name: 'سماد أساسي',  icon: '🧪', type: 'fertilizer', fertilizerTier: 'basic',   count: 0 },
+  { id: 'fertilizer_quality', name: 'سماد جودة',  icon: '✨', type: 'fertilizer', fertilizerTier: 'quality', count: 0 },
+  { id: 'fertilizer_deluxe',  name: 'سماد فاخر',  icon: '🌟', type: 'fertilizer', fertilizerTier: 'deluxe',  count: 0 },
   { id: 'bag',           name: 'المخزن',       icon: '🎒', type: 'panel', panel: 'bag' }
 ];
 
@@ -105,17 +108,30 @@ export class HUD {
           </div>
         </div>
 
-        <!-- العملات (وسط) -->
-        <div class="hud-currencies">
-          <div class="hud-currency-item coins">
-            <span class="icon" aria-hidden="true">💰</span>
-            <span id="mf-coins">0</span>
-            <button type="button" class="hud-plus" id="hud-btn-add-coins" aria-label="شراء عملات">+</button>
+        <!-- العملات ومستوى امتلاء الصومعة والحظيرة (وسط) -->
+        <div class="hud-center-cluster">
+          <div class="hud-currencies">
+            <div class="hud-currency-item coins">
+              <span class="icon" aria-hidden="true">💰</span>
+              <span id="mf-coins">0</span>
+              <button type="button" class="hud-plus" id="hud-btn-add-coins" aria-label="شراء عملات">+</button>
+            </div>
+            <div class="hud-currency-item gems">
+              <span class="icon" aria-hidden="true">💎</span>
+              <span id="mf-gems">0</span>
+              <button type="button" class="hud-plus" id="hud-btn-add-gems" aria-label="شراء جواهر">+</button>
+            </div>
           </div>
-          <div class="hud-currency-item gems">
-            <span class="icon" aria-hidden="true">💎</span>
-            <span id="mf-gems">0</span>
-            <button type="button" class="hud-plus" id="hud-btn-add-gems" aria-label="شراء جواهر">+</button>
+          <!-- مؤشرات امتلاء الصومعة والحظيرة (Hay Day Storage HUD) -->
+          <div class="hud-storage-indicators">
+            <div class="hud-storage-pill silo" id="hud-pill-silo" title="صومعة الغلال: محاصيل خام فقط">
+              <span class="storage-icon" aria-hidden="true">🌾</span>
+              <span class="storage-fill-txt" id="mf-silo-fill">0/50</span>
+            </div>
+            <div class="hud-storage-pill barn" id="hud-pill-barn" title="حظيرة المخزن: منتجات وسلع وأدوات">
+              <span class="storage-icon" aria-hidden="true">🛖</span>
+              <span class="storage-fill-txt" id="mf-barn-fill">0/50</span>
+            </div>
           </div>
         </div>
 
@@ -175,14 +191,19 @@ export class HUD {
       this.eventBus.on('quest:progress-updated', () => this.renderMissions());
       this.eventBus.on('quest:completed', () => this.renderMissions());
       this.eventBus.on('quest:claimed', () => this.renderMissions());
-      this.eventBus.on('crop:harvested', () => this.syncSeedCounts());
+      this.eventBus.on('crop:harvested', () => { this.syncSeedCounts(); this.updateStorage(); });
+      this.eventBus.on('storage:updated', () => this.updateStorage());
+      this.eventBus.on('storage:upgraded', () => this.updateStorage());
       this.eventBus.on('time:hour', () => this.pullClock());
       this.eventBus.on('time:day', () => this.pullClock());
       this.eventBus.on('game:tick', () => this.pullClock());
       this.eventBus.on('inventory:changed', () => this.syncSeedCounts());
       // أي تغيير في المخزن يحدّث عدّادات البذور
       this.eventBus.on('state:changed', (path) => {
-        if (path === 'inventory.items' || path === 'inventory') this.syncSeedCounts();
+        if (path === 'inventory.items' || path === 'inventory' || path === 'storage') {
+          this.syncSeedCounts();
+          this.updateStorage();
+        }
       });
     }
 
@@ -204,6 +225,8 @@ export class HUD {
     on('#hud-btn-map', () => this.openPanel('map'));
     on('#hud-btn-add-coins', () => this.openPanel('shop', 'coins'));
     on('#hud-btn-add-gems', () => this.openPanel('shop', 'gems'));
+    on('#hud-pill-silo', () => this.openPanel('bag', 'silo'));
+    on('#hud-pill-barn', () => this.openPanel('bag', 'barn'));
 
     on('#hud-btn-interact', () => {
       if (typeof this.callbacks.onInteract === 'function') this.callbacks.onInteract();
@@ -268,6 +291,7 @@ export class HUD {
     this.updateXP(this.getState('player.xp', 0), this.getState('player.xpToNext', 100));
     this.renderMissions();
     this.syncSeedCounts();
+    this.updateStorage();
     this.pullClock();
   }
 
@@ -284,6 +308,20 @@ export class HUD {
   updateLevel(val) {
     const el = this.container?.querySelector('#mf-level-num');
     if (el) el.textContent = val ?? 1;
+  }
+
+  updateStorage() {
+    const stats = InventorySystem.getStorageStats();
+    const siloEl = this.container?.querySelector('#mf-silo-fill');
+    const barnEl = this.container?.querySelector('#mf-barn-fill');
+    const siloPill = this.container?.querySelector('#hud-pill-silo');
+    const barnPill = this.container?.querySelector('#hud-pill-barn');
+
+    if (siloEl) siloEl.textContent = `${stats.silo.count}/${stats.silo.capacity}`;
+    if (barnEl) barnEl.textContent = `${stats.barn.count}/${stats.barn.capacity}`;
+
+    if (siloPill) siloPill.classList.toggle('is-full', stats.silo.free <= 0);
+    if (barnPill) barnPill.classList.toggle('is-full', stats.barn.free <= 0);
   }
 
   updateXP(curr, max) {
@@ -443,7 +481,7 @@ export class HUD {
   syncSeedCounts() {
     let changed = false;
     for (const item of this.currentHotbar) {
-      if (item.type !== 'seed') continue;
+      if (item.type !== 'seed' && item.type !== 'fertilizer') continue;
       const count = InventorySystem.count(item.id);
       if (item.count !== count) {
         item.count = count;

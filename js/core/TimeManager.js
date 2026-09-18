@@ -1,6 +1,17 @@
 /**
  * TimeManager.js — Real-time & Offline Progression Engine
  * Handles game ticks, timers, offline calculation, day/night cycle.
+ *
+ * Locked Product Requirements:
+ *   - Clock = device real time. 1 second = 1 second. 1 minute = 1 minute.
+ *     1 day = 1 calendar day.
+ *   - Anchor date: Friday 18 September 2026.
+ *   - Seasons follow Northern Hemisphere / Egypt astronomy:
+ *       • Summer until 23 September 2026 (autumn equinox)
+ *       • Autumn: 23 September 2026 to 21 December 2026 (winter solstice)
+ *       • Winter: 21 December 2026 to 20 March 2027 (spring equinox)
+ *       • Spring: 20 March to 21 June (summer solstice)
+ *   - Day/night lighting follows real clock hour (noon bright, dusk warm, night dark with lamps).
  */
 
 import { Events } from './EventBus.js';
@@ -9,12 +20,41 @@ import { GameState } from './GameState.js';
 const TICK_RATE = 1000;
 const ENERGY_REFILL_MINUTES = 5;
 
-/*
- * 1 يوم داخل اللعبة = 12 دقيقة حقيقية (المطلوب في GDD: 10–15 دقيقة).
- * كان يُكتب قديمًا 24*60*60*1000 (وهو 24 ساعة حقيقية!) فلا يتحرك
- * دورة النهار/الليل عمليًا. كل الحسابات تستخدم هذه الثابتة.
+/**
+ * 1 day in game = 1 real calendar day (24 hours).
  */
-export const DAY_LENGTH_MS = 12 * 60 * 1000;
+export const DAY_LENGTH_MS = 24 * 60 * 60 * 1000;
+
+/** Anchor calendar epoch: Friday 18 September 2026 */
+export const ANCHOR_DATE = Object.freeze({
+    year: 2026,
+    month: 9, // September
+    day: 18,
+    dayNameAr: 'الجمعة',
+    dayNameEn: 'Friday'
+});
+
+/**
+ * Astronomical season calculation (Egypt / Northern Hemisphere).
+ */
+export function getAstronomicalSeason(d = new Date()) {
+    const month = d.getMonth() + 1; // 1-12
+    const day = d.getDate();
+
+    // Summer: June 21 to September 22 (Autumn equinox is September 23)
+    // Autumn: September 23 to December 20 (Winter solstice is December 21)
+    // Winter: December 21 to March 19 (Spring equinox is March 20)
+    // Spring: March 20 to June 20 (Summer solstice is June 21)
+    if ((month === 3 && day >= 20) || (month > 3 && month < 6) || (month === 6 && day < 21)) {
+        return 'spring';
+    } else if ((month === 6 && day >= 21) || (month > 6 && month < 9) || (month === 9 && day < 23)) {
+        return 'summer';
+    } else if ((month === 9 && day >= 23) || (month > 9 && month < 12) || (month === 12 && day < 21)) {
+        return 'autumn';
+    } else {
+        return 'winter';
+    }
+}
 
 class TimeManager {
     constructor() {
@@ -33,6 +73,9 @@ class TimeManager {
 
         // Process offline time immediately
         this._processOfflineTime();
+
+        // Immediate first sync with real clock
+        this._syncRealTimeClock();
 
         this._interval = setInterval(
             () => this._tick(),
@@ -98,11 +141,6 @@ class TimeManager {
                 'production:offline',
                 elapsedSec
             );
-
-            // Day/night cycle
-            this._advanceDayCycle(
-                elapsedMs
-            );
         }
 
         GameState.set(
@@ -157,66 +195,32 @@ class TimeManager {
         }
     }
 
-    _advanceDayCycle(elapsedMs) {
-        const dayLength =
-            DAY_LENGTH_MS;
+    /**
+     * Synchronize with device real-time clock & astronomical seasons.
+     */
+    _syncRealTimeClock() {
+        const d = new Date();
+        const hours = d.getHours();
+        const minutes = d.getMinutes();
+        const seconds = d.getSeconds();
 
-        const current =
-            GameState.get(
-                'time.dayCycle'
-            ) || 0;
+        // 0..1 progression through the 24h real day
+        const dayProgress = (hours * 3600 + minutes * 60 + seconds) / 86400;
 
-        const advance =
-            elapsedMs /
-            dayLength;
+        // Anchor date calculation: Day 1 = Friday 18 September 2026
+        const anchorMs = new Date(2026, 8, 18, 0, 0, 0).getTime(); // Note month 8 is September (0-indexed)
+        const todayStartMs = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0).getTime();
+        const calendarDaysPassed = Math.max(0, Math.floor((todayStartMs - anchorMs) / (86400 * 1000)));
+        const gameDay = 1 + calendarDaysPassed;
 
-        const newCycle =
-            (current + advance) % 1;
+        const season = getAstronomicalSeason(d);
 
-        GameState.set(
-            'time.dayCycle',
-            newCycle
-        );
-
-        // عدد الأيام الكاملة التي مرّت أثناء الغياب
-        const wholeDays =
-            Math.floor(advance);
-
-        if (wholeDays > 0) {
-            GameState.set(
-                'time.day',
-                (GameState.get('time.day') || 1) + wholeDays
-            );
-        }
-
-        // Four seasons, each lasting 7 days
-        const seasons = [
-            'spring',
-            'summer',
-            'autumn',
-            'winter'
-        ];
-
-        const dayOfYear =
-            Math.floor(
-                Date.now() /
-                (
-                    1000 *
-                    60 *
-                    60 *
-                    24
-                )
-            );
-
-        const seasonIndex =
-            Math.floor(
-                (dayOfYear % 28) / 7
-            );
-
-        GameState.set(
-            'time.season',
-            seasons[seasonIndex]
-        );
+        GameState.set('time.dayCycle', dayProgress);
+        GameState.set('time.hours', hours);
+        GameState.set('time.minutes', minutes);
+        GameState.set('time.seconds', seconds);
+        GameState.set('time.day', gameDay);
+        GameState.set('time.season', season);
     }
 
     _tick() {
@@ -249,8 +253,8 @@ class TimeManager {
         // Energy
         this._tickEnergy(now);
 
-        // Day/night
-        this._tickDayCycle(dt);
+        // Real-time Day/Night Sync
+        this._syncRealTimeClock();
 
         // Global game tick
         Events.emit(
@@ -329,71 +333,11 @@ class TimeManager {
                     1
                 );
             } else {
-                // Keep timestamp fresh when energy is full
                 GameState.set(
                     'player.energyLastRefill',
                     now
                 );
             }
-        }
-    }
-
-    _tickDayCycle(dt) {
-        const dayLength =
-            DAY_LENGTH_MS;
-
-        const advance =
-            (dt * 1000) /
-            dayLength;
-
-        const current =
-            GameState.get(
-                'time.dayCycle'
-            ) || 0;
-
-        let newCycle =
-            current + advance;
-
-        // اليوم يلفّ — عدّاد الأيام يشتّت في الحالة ويُحفظ
-        if (newCycle >= 1) {
-            newCycle -= 1;
-            GameState.set(
-                'time.day',
-                (GameState.get('time.day') || 1) + 1
-            );
-            Events.emit(
-                'time:day',
-                GameState.get('time.day') || 1
-            );
-        }
-
-        GameState.set(
-            'time.dayCycle',
-            newCycle
-        );
-
-        const oldHour =
-            Math.floor(
-                current * 24
-            );
-
-        const newHour =
-            Math.floor(
-                newCycle * 24
-            );
-
-        if (oldHour !== newHour) {
-            // ساعات/دقائق داخل الحالة (مطلوبة في شجرة GameState)
-            const mins = Math.floor(
-                (newCycle * 24 - newHour) * 60
-            );
-            GameState.set('time.hours', newHour);
-            GameState.set('time.minutes', mins);
-
-            Events.emit(
-                'time:hour',
-                newHour
-            );
         }
     }
 
@@ -403,156 +347,74 @@ class TimeManager {
 
     /** @returns {{hours:number,minutes:number,day:number,dayProgress:number,season:string}} */
     getClock() {
-        const cycle =
-            GameState.get(
-                'time.dayCycle'
-            ) || 0;
-
-        const totalMinutes =
-            cycle * 24 * 60;
-
-        const hours =
-            Math.floor(totalMinutes / 60) % 24;
-
-        const minutes =
-            Math.floor(totalMinutes % 60);
+        const d = new Date();
+        const hours = d.getHours();
+        const minutes = d.getMinutes();
+        const seconds = d.getSeconds();
+        const dayProgress = (hours * 3600 + minutes * 60 + seconds) / 86400;
 
         return {
             hours,
             minutes,
-            day:
-                GameState.get('time.day') || 1,
-            dayProgress:
-                cycle,
-            season:
-                GameState.get('time.season') || 'spring'
+            seconds,
+            day: GameState.get('time.day') || 1,
+            dayProgress,
+            season: getAstronomicalSeason(d)
         };
     }
 
-    /** "08:05 ص" — تنسيق الساعة للـ HUD. */
+    /** "08:05 ص" — Arabic 12-hour formatted clock for HUD */
     getClockLabel() {
-        const { hours, minutes } =
-            this.getClock();
-        const suffix =
-            hours < 12 ? 'ص' : 'م';
-        const h12 =
-            ((hours + 11) % 12) + 1;
+        const { hours, minutes } = this.getClock();
+        const suffix = hours < 12 ? 'ص' : 'م';
+        const h12 = ((hours + 11) % 12) + 1;
         return `${String(h12).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${suffix}`;
     }
 
-    /** رمز الطقس/الوقت للـ HUD. */
+    /** Weather / phase icon for HUD */
     getPhaseIcon() {
-        const { hours } =
-            this.getClock();
+        const { hours } = this.getClock();
         if (hours >= 5 && hours < 8) return '🌅';
         if (hours >= 8 && hours < 17) return '☀️';
         if (hours >= 17 && hours < 20) return '🌇';
         return '🌙';
     }
 
-    /**
-     * Create a timer that fires after duration
-     */
-    setTimer(
-        durationMs,
-        callback,
-        data = {}
-    ) {
-        const id =
-            this._nextId++;
-
-        this._callbacks.set(
-            id,
-            {
-                endTime:
-                    Date.now() +
-                    durationMs,
-
-                callback,
-
-                data: {
-                    ...data,
-                    timerId: id,
-                    duration: durationMs
-                }
-            }
-        );
-
-        Events.emit(
-            'timer:created',
-            id,
-            durationMs
-        );
-
+    setTimer(durationMs, callback, data = {}) {
+        const id = this._nextId++;
+        this._callbacks.set(id, {
+            endTime: Date.now() + durationMs,
+            callback,
+            data: { ...data, timerId: id, duration: durationMs }
+        });
+        Events.emit('timer:created', id, durationMs);
         return id;
     }
 
-    /**
-     * Cancel a timer
-     */
     clearTimer(id) {
-        const existed =
-            this._callbacks.delete(id);
-
-        if (existed) {
-            Events.emit(
-                'timer:cancelled',
-                id
-            );
-        }
+        const existed = this._callbacks.delete(id);
+        if (existed) Events.emit('timer:cancelled', id);
     }
 
-    /**
-     * Get remaining time
-     */
     getRemaining(id) {
-        const timer =
-            this._callbacks.get(id);
-
-        if (!timer) {
-            return 0;
-        }
-
-        return Math.max(
-            0,
-            timer.endTime -
-            Date.now()
-        );
+        const timer = this._callbacks.get(id);
+        if (!timer) return 0;
+        return Math.max(0, timer.endTime - Date.now());
     }
 
-    /**
-     * Format milliseconds
-     */
     static formatDuration(ms) {
-        const sec =
-            Math.floor(ms / 1000);
-
-        const min =
-            Math.floor(sec / 60);
-
-        const hr =
-            Math.floor(min / 60);
-
-        if (hr > 0) {
-            return `${hr}h ${min % 60}m`;
-        }
-
-        if (min > 0) {
-            return `${min}m ${sec % 60}s`;
-        }
-
+        const sec = Math.floor(ms / 1000);
+        const min = Math.floor(sec / 60);
+        const hr = Math.floor(min / 60);
+        if (hr > 0) return `${hr}h ${min % 60}m`;
+        if (min > 0) return `${min}m ${sec % 60}s`;
         return `${sec}s`;
     }
 
-    /**
-     * Format seconds
-     */
     static formatSeconds(totalSec) {
-        return TimeManager.formatDuration(
-            totalSec * 1000
-        );
+        return TimeManager.formatDuration(totalSec * 1000);
     }
 }
 
-export const Time =
-    new TimeManager();
+export const Time = new TimeManager();
+export default Time;

@@ -31,6 +31,7 @@ import { ProductionYard } from './world/ProductionYard.js';
 import UIManager from './ui/UIManager.js';
 import { Environment } from './world/Environment.js';
 import { CollisionEngine } from './core/CollisionEngine.js';
+import { HouseInterior } from './world/HouseInterior.js';
 
 /* ============================================================
    CAMERA & ENGINE CONFIGURATION (Ground Focused Framing)
@@ -760,6 +761,9 @@ class MyFarmApp {
         this.initialized = false;
         this.clock = new THREE.Clock();
 
+        this.inHouseInterior = false;
+        this.houseInterior = null;
+
         this._boundResize = () => this.resize();
         this._boundLoop = () => this.gameLoop();
         this._boundKeyDown = (e) => this.handleKeyDown(e);
@@ -803,6 +807,17 @@ class MyFarmApp {
             this.collision = new CollisionEngine();
             this.environment = new Environment(this.scene, { collision: this.collision });
             this.ground = this.environment.group;
+
+            // 🏡 المشهد الداخلي لمنزل المزرعة (House Interior Scene)
+            try {
+                this.houseInterior = new HouseInterior({
+                    parentScene: this.scene,
+                    onExit: () => this.exitHouseInterior(),
+                    onOpenChest: () => this.openHouseChest()
+                });
+            } catch (e) {
+                console.warn('[MY FARM] HouseInterior notice:', e);
+            }
 
             try {
                 await Promise.race([
@@ -1449,13 +1464,120 @@ class MyFarmApp {
         });
     }
 
+    /* ========================================================
+       🏡 بيت المزرعة الداخلي (House Interior Flow)
+       ======================================================== */
+    enterHouseInterior() {
+        if (this.inHouseInterior) return;
+        this.inHouseInterior = true;
+
+        // إخفاء معالم المزرعة الخارجية لتوفير الأداء والتركيز على البيت الداخلي
+        if (this.environment?.group) this.environment.group.visible = false;
+        if (this.productionYard?.entries) {
+            for (const entry of this.productionYard.entries.values()) {
+                if (entry.group) entry.group.visible = false;
+            }
+        }
+        for (const entry of this.fieldMeshes.values()) {
+            if (entry.group) entry.group.visible = false;
+        }
+        if (this.cropBatches?.beds) this.cropBatches.beds.visible = false;
+        if (this.cropBatches?.groups) {
+            for (const g of this.cropBatches.groups.values()) {
+                if (g.stem) g.stem.visible = false;
+                if (g.head) g.head.visible = false;
+            }
+        }
+
+        // إظهار المشهد الداخلي
+        if (this.houseInterior) {
+            this.houseInterior.show();
+        }
+
+        // وضع اللاعب عند مدخل البيت الداخلي
+        if (this.player?.root) {
+            this.player.root.position.set(0, 0, 3.2);
+            this.player.root.rotation.y = Math.PI; // يواجه الغرفة للأمام
+            // تبديل محرك التصادم إلى التصادم الداخلي
+            if (this.houseInterior?.collision) {
+                this.player.collision = this.houseInterior.collision;
+            }
+        }
+
+        // تعديل زاوية الكاميرا للمشهد الداخلي الدافئ
+        this.cameraPitch = 0.55;
+        this.cameraDistance = 7.5;
+        this.cameraYaw = 0.0;
+
+        this.toast?.success('🏡 مرحبًا بك في منزلك الدافئ!');
+        this.spawnFloatingFeedback('🏡 دخلت بيت المزرعة', '#ffd54f');
+    }
+
+    exitHouseInterior() {
+        if (!this.inHouseInterior) return;
+        this.inHouseInterior = false;
+
+        // إخفاء المشهد الداخلي
+        if (this.houseInterior) {
+            this.houseInterior.hide();
+        }
+
+        // استعادة معالم المزرعة الخارجية كاملة
+        if (this.environment?.group) this.environment.group.visible = true;
+        if (this.productionYard?.entries) {
+            for (const entry of this.productionYard.entries.values()) {
+                if (entry.group) entry.group.visible = true;
+            }
+        }
+        for (const entry of this.fieldMeshes.values()) {
+            if (entry.group) entry.group.visible = true;
+        }
+        if (this.cropBatches?.beds) this.cropBatches.beds.visible = true;
+        this.cropBatches?.markDirty();
+
+        // إعادة اللاعب أمام باب البيت الخارجي في باحة المزرعة
+        if (this.player?.root) {
+            this.player.root.position.set(-14, 0, -8.2);
+            this.player.root.rotation.y = 0; // يواجه المزرعة جنوبًا
+            if (this.collision) {
+                this.player.collision = this.collision;
+            }
+        }
+
+        this.cameraPitch = CONFIG.camera.defaultPitch;
+        this.cameraDistance = CONFIG.camera.defaultDistance;
+
+        this.toast?.success('🌾 عدت إلى باحة المزرعة');
+        this.spawnFloatingFeedback('🚪 خرجت إلى المزرعة', '#86d942');
+    }
+
+    openHouseChest() {
+        this.gameUI?.open('bag');
+        this.toast?.info('📦 صندوق التخزين: استعرض محاصيلك وسلعك أو رقّ مخازنك');
+    }
+
     triggerActiveInteraction() {
         if (!this.activeTarget) return;
         const target = this.activeTarget;
 
         if (target.type === 'door') {
+            if (target.door.isHouseDoor) {
+                // دخول حقيقي للمنزل (House Interior)
+                this.enterHouseInterior();
+                return;
+            }
+            if (target.door.isExitDoor) {
+                // خروج حقيقي للمزرعة
+                this.exitHouseInterior();
+                return;
+            }
             const opened = target.door.toggle();
             this.spawnFloatingFeedback(opened ? '🚪 الباب فُتح' : '🚪 الباب أُغلق', '#ffd54f');
+            return;
+        }
+
+        if (target.type === 'chest') {
+            this.openHouseChest();
             return;
         }
 
@@ -1506,6 +1628,22 @@ class MyFarmApp {
 
         if (slot.state === 'empty') {
             const selected = this.hud?.getSelectedItem?.();
+
+            // التحقق إن كان اللاعب يمسك سمادًا لوضعه على التربة الفارغة (Stardew-inspired)
+            if (selected?.type === 'fertilizer') {
+                const res = FarmingSystem.applyFertilizer(fieldId, slotIndex, selected.id);
+                if (!res.success) {
+                    this.toast?.error(res.error || 'تعذّر وضع السماد');
+                    return;
+                }
+                this.hud?.syncSeedCounts?.();
+                this.player?.playToolSwing?.();
+                this.spawnFloatingFeedback(`✨ تم تسميد الخانة (${selected.name})!`, '#ffb800');
+                this.cropBatches?.markDirty();
+                this.checkNearTargets(true);
+                return;
+            }
+
             const cropType = selected?.type === 'seed' ? (selected.cropType || 'wheat') : null;
 
             if (!cropType) {
@@ -1653,12 +1791,30 @@ class MyFarmApp {
         let closestTarget = null;
         let minDist = 3.6;
 
-        const nearDoor = this.environment?.getNearestDoor(playerPos, 2.5);
-        if (nearDoor) {
-            const doorDist = nearDoor.distanceTo(playerPos);
-            if (doorDist < minDist) {
-                minDist = doorDist;
-                closestTarget = { type: 'door', door: nearDoor };
+        if (this.inHouseInterior) {
+            // أهداف التفاعل داخل البيت
+            if (this.houseInterior?.exitDoor) {
+                const d = this.houseInterior.exitDoor.distanceTo(playerPos);
+                if (d < 2.5 && d < minDist) {
+                    minDist = d;
+                    closestTarget = { type: 'door', door: this.houseInterior.exitDoor };
+                }
+            }
+            if (this.houseInterior?.chestPos) {
+                const cDist = Math.hypot(playerPos.x - this.houseInterior.chestPos.x, playerPos.z - this.houseInterior.chestPos.z);
+                if (cDist < 2.2 && cDist < minDist) {
+                    minDist = cDist;
+                    closestTarget = { type: 'chest' };
+                }
+            }
+        } else {
+            const nearDoor = this.environment?.getNearestDoor(playerPos, 2.5);
+            if (nearDoor) {
+                const doorDist = nearDoor.distanceTo(playerPos);
+                if (doorDist < minDist) {
+                    minDist = doorDist;
+                    closestTarget = { type: 'door', door: nearDoor };
+                }
             }
         }
 
@@ -1733,11 +1889,28 @@ class MyFarmApp {
             promptEl.classList.add('visible');
 
             if (closestTarget.type === 'door') {
-                const open = closestTarget.door.open;
-                promptTitle.textContent = open ? '🚪 باب مفتوح' : `🚪 ${closestTarget.door.label}`;
-                promptDesc.textContent = open ? 'أغلق الباب لتأمين المبنى' : 'ادخل المبنى أو أغلقه بعد المرور';
-                promptBtn.textContent = open ? 'إغلاق الباب' : 'فتح الباب';
-                promptBtn.style.background = 'linear-gradient(180deg, #c48a3a 0%, #8a5520 100%)';
+                if (closestTarget.door.isHouseDoor) {
+                    promptTitle.textContent = '🏡 بيت المزرعة';
+                    promptDesc.textContent = 'ادخل البيت للاستراحة وتفقد صندوق التخزين';
+                    promptBtn.textContent = 'دخول البيت 🏡';
+                    promptBtn.style.background = 'linear-gradient(180deg, #4caf50 0%, #2e7d32 100%)';
+                } else if (closestTarget.door.isExitDoor) {
+                    promptTitle.textContent = '🚪 باب الخروج';
+                    promptDesc.textContent = 'العودة إلى باحة المزرعة وأعمال الحقول';
+                    promptBtn.textContent = 'خروج للمزرعة 🌾';
+                    promptBtn.style.background = 'linear-gradient(180deg, #ff9800 0%, #e65100 100%)';
+                } else {
+                    const open = closestTarget.door.open;
+                    promptTitle.textContent = open ? '🚪 باب مفتوح' : `🚪 ${closestTarget.door.label}`;
+                    promptDesc.textContent = open ? 'أغلق الباب لتأمين المبنى' : 'ادخل المبنى أو أغلقه بعد المرور';
+                    promptBtn.textContent = open ? 'إغلاق الباب' : 'فتح الباب';
+                    promptBtn.style.background = 'linear-gradient(180deg, #c48a3a 0%, #8a5520 100%)';
+                }
+            } else if (closestTarget.type === 'chest') {
+                promptTitle.textContent = '📦 صندوق تخزين المزرعة';
+                promptDesc.textContent = 'استعرض الصومعة والحظيرة وقم بترقية السعة';
+                promptBtn.textContent = 'فتح الصندوق 📦';
+                promptBtn.style.background = 'linear-gradient(180deg, #ffd54f 0%, #f5a623 100%)';
             } else if (closestTarget.type === 'market') {
                 promptTitle.textContent = '🛒 سوق المزرعة';
                 promptDesc.textContent = 'اعرض محاصيلك ومنتجاتك للبيع والشراء';

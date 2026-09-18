@@ -83,7 +83,9 @@ function freshSlots() {
                 plantedAt: 0,
                 readyAt: 0,
                 witherAt: 0,
-                watered: false
+                watered: false,
+                fertilizerTier: 'normal',
+                cropQuality: 1
             });
         }
     }
@@ -129,6 +131,8 @@ class FarmingSystemService {
                 ...base[i],
                 cropType,
                 watered: !!s.watered,
+                fertilizerTier: s.fertilizerTier || 'normal',
+                cropQuality: Number(s.cropQuality) || 1,
                 plantedAt: Number(s.plantedAt) || 0,
                 readyAt: Number(s.readyAt) || 0,
                 witherAt: Number(s.witherAt) || 0,
@@ -177,6 +181,66 @@ class FarmingSystemService {
         return this.getOrCreateSlots(fieldId).find(s => s.state === wantedState) || null;
     }
 
+    /**
+     * Determine harvest crop quality tier based on applied fertilizer (Stardew-inspired).
+     * Quality tiers: 1 (normal), 2 (silver ✨), 3 (gold ⭐), 4 (deluxe 🌟).
+     */
+    _rollQuality(fertilizerTier = 'normal') {
+        const r = Math.random();
+        switch (fertilizerTier) {
+            case 'deluxe':
+                // Deluxe unlocks top tier (4) and gives highest chances
+                if (r < 0.25) return 4; // Deluxe quality
+                if (r < 0.65) return 3; // Gold quality
+                if (r < 0.90) return 2; // Silver quality
+                return 1;
+            case 'quality':
+                if (r < 0.35) return 3; // Gold quality
+                if (r < 0.75) return 2; // Silver quality
+                return 1;
+            case 'basic':
+                if (r < 0.15) return 3; // Gold quality
+                if (r < 0.50) return 2; // Silver quality
+                return 1;
+            case 'normal':
+            default:
+                if (r < 0.05) return 3;
+                if (r < 0.20) return 2;
+                return 1;
+        }
+    }
+
+    /**
+     * Apply fertilizer to a tilled slot before sprout.
+     */
+    applyFertilizer(fieldId, slotIndex, fertilizerId = 'fertilizer_basic') {
+        const slots = this.getOrCreateSlots(fieldId);
+        const slot = slots[slotIndex];
+        if (!slot) return { success: false, error: 'خانة غير موجودة' };
+        if (slot.state !== 'empty' && slot.state !== 'growing') {
+            return { success: false, error: 'يمكن وضع السماد فقط على التربة الفارغة أو قبل الإنبات' };
+        }
+
+        // Map item ID to tier
+        const tierMap = {
+            fertilizer_normal: 'normal',
+            fertilizer_basic: 'basic',
+            fertilizer_quality: 'quality',
+            fertilizer_deluxe: 'deluxe'
+        };
+        const tier = tierMap[fertilizerId] || 'basic';
+
+        const removed = InventorySystem.remove(fertilizerId, 1);
+        if (!removed.success) {
+            return { success: false, error: `لا يوجد ${ITEMS[fertilizerId]?.name || 'سماد'} في المخزن` };
+        }
+
+        slot.fertilizerTier = tier;
+        this._persist(fieldId);
+        Events.emit('crop:fertilized', { fieldId, slotIndex, tier, slot });
+        return { success: true, tier, slot };
+    }
+
     /* ========================================================
        ACTIONS
        ======================================================== */
@@ -211,6 +275,8 @@ class FarmingSystemService {
         slot.readyAt = now + growMs;
         slot.witherAt = now + growMs * 2; // ذبول إن لم تُسقَ
         slot.watered = false;
+        slot.fertilizerTier = slot.fertilizerTier || 'normal';
+        slot.cropQuality = this._rollQuality(slot.fertilizerTier);
 
         this._persist(fieldId);
         Events.emit('crop:planted', { fieldId, slotIndex, cropType, slot });
@@ -254,13 +320,29 @@ class FarmingSystemService {
 
         const cropDef = CROPS_DEFINITIONS[slot.cropType] || CROPS_DEFINITIONS.wheat;
         const yieldAmount = 1 + (Math.random() < 0.25 ? 1 : 0); // 25% حصاد مزدوج
+        const quality = slot.cropQuality || 1;
 
-        const added = InventorySystem.add(cropDef.id, yieldAmount, 1);
+        // Hay Day Silo Check: Silo stores raw crops only. If silo is full, harvest is blocked!
+        if (InventorySystem.siloFreeSpace() < yieldAmount) {
+            Events.emit('silo:full');
+            return { success: false, error: 'صومعة الغلال ممتلئة! فرّغ بعض المساحة أولًا', isSiloFull: true };
+        }
+
+        const added = InventorySystem.add(cropDef.id, yieldAmount, quality);
         if (!added.success) {
             return { success: false, error: added.error || 'inventory_full' };
         }
-        // رجوع البذرة حتى تبقى الحلقة مستدامة بدون متجر
+        // رجوع البذرة إلى الحظيرة (Barn) لتبقى الحلقة مستدامة
         InventorySystem.add(cropDef.seedId, added.added, 1);
+
+        // فرصة الحصول على مواد ترقية الحظيرة/الصومعة من الحصاد (Hay Day supply drops)
+        let bonusSupply = null;
+        if (Math.random() < 0.20) {
+            const supplies = ['nail', 'wood_plank', 'duct_tape'];
+            const dropped = supplies[Math.floor(Math.random() * supplies.length)];
+            InventorySystem.add(dropped, 1);
+            bonusSupply = dropped;
+        }
 
         XPSystem.addXp(cropDef.xpReward, 'harvest');
         const stats = GameState.get('stats') || {};
@@ -315,6 +397,8 @@ class FarmingSystemService {
         slot.state = 'empty';
         slot.cropType = null;
         slot.watered = false;
+        slot.fertilizerTier = 'normal';
+        slot.cropQuality = 1;
         slot.plantedAt = 0;
         slot.readyAt = 0;
         slot.witherAt = 0;

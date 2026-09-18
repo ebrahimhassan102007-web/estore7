@@ -98,7 +98,28 @@ export const ITEMS = Object.freeze({
     egg:  { id: 'egg',  name: 'بيض',  nameEn: 'Egg',  icon: '🥚', category: 'animal', sellPrice: 60 },
     milk: { id: 'milk', name: 'حليب', nameEn: 'Milk', icon: '🥛', category: 'animal', sellPrice: 140 },
     wool: { id: 'wool', name: 'صوف',  nameEn: 'Wool', icon: '🧶', category: 'animal', sellPrice: 220 },
-    truffle: { id: 'truffle', name: 'كمأة', nameEn: 'Truffle', icon: '🍄', category: 'animal', sellPrice: 180 }
+    truffle: { id: 'truffle', name: 'كمأة', nameEn: 'Truffle', icon: '🍄', category: 'animal', sellPrice: 180 },
+
+    // ---- Dairy products (Hay Day) ----
+    cream:  { id: 'cream',  name: 'قشطة', nameEn: 'Cream',  icon: '🍶', category: 'dairy', sellPrice: 200 },
+    butter: { id: 'butter', name: 'زبدة', nameEn: 'Butter', icon: '🧈', category: 'dairy', sellPrice: 320 },
+    cheese: { id: 'cheese', name: 'جبن',  nameEn: 'Cheese', icon: '🧀', category: 'dairy', sellPrice: 480 },
+
+    // ---- Species-Specific Animal Feeds (Feed Mill) ----
+    cow_feed:   { id: 'cow_feed',   name: 'علف الأبقار',  nameEn: 'Cow Feed',   icon: '🌽', category: 'milled', sellPrice: 45 },
+    sheep_feed: { id: 'sheep_feed', name: 'علف الأغنام',  nameEn: 'Sheep Feed', icon: '🌾', category: 'milled', sellPrice: 40 },
+    pig_feed:   { id: 'pig_feed',   name: 'علف الخنازير', nameEn: 'Pig Feed',   icon: '🥕', category: 'milled', sellPrice: 50 },
+
+    // ---- Building Upgrade Supplies (Hay Day Silo/Barn) ----
+    nail:       { id: 'nail',       name: 'مسامير',  nameEn: 'Nails',  icon: '🔩', category: 'supply', sellPrice: 120 },
+    wood_plank: { id: 'wood_plank', name: 'ألواح خشب', nameEn: 'Planks', icon: '🪵', category: 'supply', sellPrice: 150 },
+    duct_tape:  { id: 'duct_tape',  name: 'شريط لاصق', nameEn: 'Tape',   icon: '🩹', category: 'supply', sellPrice: 180 },
+
+    // ---- Soil Quality Fertilizers (Stardew-inspired) ----
+    fertilizer_normal:  { id: 'fertilizer_normal',  name: 'سماد عادي',  nameEn: 'Normal Fertilizer',  icon: '🧪', category: 'fertilizer', tier: 'normal',  sellPrice: 30 },
+    fertilizer_basic:   { id: 'fertilizer_basic',   name: 'سماد أساسي',  nameEn: 'Basic Fertilizer',   icon: '🧪', category: 'fertilizer', tier: 'basic',   sellPrice: 60 },
+    fertilizer_quality: { id: 'fertilizer_quality', name: 'سماد جودة',  nameEn: 'Quality Fertilizer', icon: '✨', category: 'fertilizer', tier: 'quality', sellPrice: 120 },
+    fertilizer_deluxe:  { id: 'fertilizer_deluxe',  name: 'سماد فاخر',  nameEn: 'Deluxe Fertilizer',  icon: '🌟', category: 'fertilizer', tier: 'deluxe',  sellPrice: 250 }
 });
 
 /* ============================================================
@@ -106,13 +127,27 @@ export const ITEMS = Object.freeze({
    ============================================================ */
 
 export const BUILDINGS = Object.freeze({
+    silo: {
+        id: 'silo',
+        name: 'الصومعة',
+        nameEn: 'Silo',
+        icon: '🌾',
+        category: 'storage',
+        storageType: 'silo',
+        description: 'تخزين المحاصيل الخام فقط.',
+        cost: { coins: 0, gems: 0 },
+        buildTime: 0,
+        unlockLevel: 1,
+        size: { w: 2, d: 2 }
+    },
     barn: {
         id: 'barn',
         name: 'الحظيرة',
         nameEn: 'Barn',
         icon: '🛖',
         category: 'storage',
-        description: 'مخزن المزرعة الرئيسي.',
+        storageType: 'barn',
+        description: 'مخزن منتجات الحيوانات، السلع المصنعة، الأدوات ومواد الترقية.',
         cost: { coins: 0, gems: 0 },
         buildTime: 0,
         unlockLevel: 1,
@@ -132,6 +167,22 @@ export const BUILDINGS = Object.freeze({
         buildTime: 0,
         unlockLevel: 1,
         queueLimit: 4,
+        size: { w: 1, d: 1 }
+    },
+
+    // ---- معمل الألبان : المرحلة الثالثة من السلسلة (Hay Day Dairy) ----
+    dairy: {
+        id: 'dairy',
+        name: 'معمل الألبان',
+        epithet: 'نسيم الحليب',
+        nameEn: 'Dairy',
+        icon: '🥛',
+        category: 'production',
+        description: 'يحوّل الحليب الطازج إلى قشطة وزبدة وجبن.',
+        cost: { coins: 2000, gems: 0 },
+        buildTime: 0,
+        unlockLevel: 1,
+        queueLimit: 3,
         size: { w: 1, d: 1 }
     },
 
@@ -254,9 +305,60 @@ export const RECIPES = Object.freeze({
         ],
         output: { item: 'chicken_feed', amount: 3 },
         productionTime: 20,
-        unlockLevel: 2,
+        unlockLevel: 1,
         xp: 6,
         sellPrice: 35
+    },
+    cow_feed: {
+        id: 'cow_feed',
+        building: 'grain_mill',
+        name: 'علف الأبقار',
+        nameEn: 'Cow Feed',
+        icon: '🌽',
+        description: 'خليط من الذرة والقمح لتغذية الأبقار وإنتاج الحليب.',
+        ingredients: [
+            { item: 'corn',  amount: 2 },
+            { item: 'wheat', amount: 1 }
+        ],
+        output: { item: 'cow_feed', amount: 3 },
+        productionTime: 30,
+        unlockLevel: 2,
+        xp: 8,
+        sellPrice: 45
+    },
+    sheep_feed: {
+        id: 'sheep_feed',
+        building: 'grain_mill',
+        name: 'علف الأغنام',
+        nameEn: 'Sheep Feed',
+        icon: '🌾',
+        description: 'حبوب قمح وجزر لتغذية الأغنام وإنتاج الصوف.',
+        ingredients: [
+            { item: 'wheat',  amount: 2 },
+            { item: 'carrot', amount: 1 }
+        ],
+        output: { item: 'sheep_feed', amount: 3 },
+        productionTime: 40,
+        unlockLevel: 2,
+        xp: 10,
+        sellPrice: 40
+    },
+    pig_feed: {
+        id: 'pig_feed',
+        building: 'grain_mill',
+        name: 'علف الخنازير',
+        nameEn: 'Pig Feed',
+        icon: '🥕',
+        description: 'جزر وذرة لتغذية الخنازير والبحث عن الكمأة.',
+        ingredients: [
+            { item: 'carrot', amount: 2 },
+            { item: 'corn',   amount: 1 }
+        ],
+        output: { item: 'pig_feed', amount: 3 },
+        productionTime: 50,
+        unlockLevel: 2,
+        xp: 12,
+        sellPrice: 50
     },
 
     // ========== 🍞 المخبز ==========
@@ -322,6 +424,50 @@ export const RECIPES = Object.freeze({
         unlockLevel: 3,
         xp: 34,
         sellPrice: 650
+    },
+
+    // ========== 🥛 معمل الألبان (Hay Day Dairy) ==========
+    cream: {
+        id: 'cream',
+        building: 'dairy',
+        name: 'قشطة',
+        nameEn: 'Cream',
+        icon: '🍶',
+        description: 'قشطة طازجة غنية من حليب الأبقار.',
+        ingredients: [ { item: 'milk', amount: 1 } ],
+        output: { item: 'cream', amount: 1 },
+        productionTime: 40,
+        unlockLevel: 1,
+        xp: 14,
+        sellPrice: 200
+    },
+    butter: {
+        id: 'butter',
+        building: 'dairy',
+        name: 'زبدة',
+        nameEn: 'Butter',
+        icon: '🧈',
+        description: 'زبدة ذهبية مخفوقة من الحليب الطازج.',
+        ingredients: [ { item: 'milk', amount: 2 } ],
+        output: { item: 'butter', amount: 1 },
+        productionTime: 75,
+        unlockLevel: 2,
+        xp: 22,
+        sellPrice: 320
+    },
+    cheese: {
+        id: 'cheese',
+        building: 'dairy',
+        name: 'جبن',
+        nameEn: 'Cheese',
+        icon: '🧀',
+        description: 'قالب جبن ريفي معتّق ولذيذ.',
+        ingredients: [ { item: 'milk', amount: 3 } ],
+        output: { item: 'cheese', amount: 1 },
+        productionTime: 120,
+        unlockLevel: 3,
+        xp: 35,
+        sellPrice: 480
     }
 });
 
@@ -339,7 +485,7 @@ export const ANIMALS = Object.freeze({
         product: 'egg',
         productionTime: 90,
         feed: 'chicken_feed',
-        unlockLevel: 3,
+        unlockLevel: 1,
         cost: { coins: 300, gems: 0 }
     },
     cow: {
@@ -349,9 +495,9 @@ export const ANIMALS = Object.freeze({
         icon: '🐄',
         home: 'cow_barn',
         product: 'milk',
-        productionTime: 240,
-        feed: 'corn',
-        unlockLevel: 5,
+        productionTime: 180,
+        feed: 'cow_feed',
+        unlockLevel: 1,
         cost: { coins: 900, gems: 0 }
     },
     sheep: {
@@ -361,9 +507,9 @@ export const ANIMALS = Object.freeze({
         icon: '🐑',
         home: 'sheep_pen',
         product: 'wool',
-        productionTime: 360,
-        feed: 'wheat',
-        unlockLevel: 7,
+        productionTime: 240,
+        feed: 'sheep_feed',
+        unlockLevel: 1,
         cost: { coins: 1500, gems: 0 }
     },
     pig: {
@@ -373,9 +519,9 @@ export const ANIMALS = Object.freeze({
         icon: '🐷',
         home: 'pig_sty',
         product: 'truffle',
-        productionTime: 300,
-        feed: 'corn',
-        unlockLevel: 4,
+        productionTime: 210,
+        feed: 'pig_feed',
+        unlockLevel: 1,
         cost: { coins: 1200, gems: 0 }
     }
 });
@@ -491,22 +637,32 @@ export const TOOLS = Object.freeze({
    ============================================================ */
 
 export const STARTER_KIT = Object.freeze({
-    buildings: ['grain_mill', 'bakery'],
+    buildings: ['grain_mill', 'bakery', 'dairy'],
     items: {
-        wheat: 6,
-        corn: 4,
-        carrot: 2,
+        wheat: 8,
+        corn: 6,
+        carrot: 4,
+        milk: 3,
+        chicken_feed: 4,
+        cow_feed: 4,
+        sheep_feed: 4,
+        pig_feed: 4,
+        nail: 2,
+        wood_plank: 2,
+        duct_tape: 1,
+        fertilizer_basic: 2,
         // بذور أولية — بدونها لا يمكن بدء حلقة الزراعة (الحصاد يعيد البذرة)
-        wheat_seed: 8,
-        corn_seed: 5,
-        carrot_seed: 3,
-        tomato_seed: 2
+        wheat_seed: 10,
+        corn_seed: 8,
+        carrot_seed: 5,
+        tomato_seed: 4
     },
-    recipes: ['flour', 'bread'],
-    // مواقع البناء على الشبكة (بين الحقول والأراضي الجنوبية)
+    recipes: ['flour', 'chicken_feed', 'cow_feed', 'sheep_feed', 'pig_feed', 'bread', 'cream', 'butter'],
+    // مواقع البناء على الشبكة في ساحة الإنتاج
     positions: {
         grain_mill: { x: -3.8, z: 4.5 },
-        bakery:     { x:  3.8, z: 4.5 }
+        bakery:     { x:  3.8, z: 4.5 },
+        dairy:      { x:  0.0, z: 6.5 }
     }
 });
 

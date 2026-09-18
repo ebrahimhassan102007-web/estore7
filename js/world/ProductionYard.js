@@ -142,8 +142,74 @@ export class ProductionYard {
         switch (typeId) {
             case 'grain_mill': return this._buildMill();
             case 'bakery':     return this._buildBakery();
+            case 'dairy':      return this._buildDairy();
             default:           return this._buildShed();
         }
+    }
+
+    /** 🥛 معمل الألبان (Hay Day Dairy) */
+    _buildDairy() {
+        const g = new THREE.Group();
+        g.userData = { kind: 'dairy' };
+        this._basePlate(g);
+
+        // هيكل معمل الألبان الخشبي الأزرق الفاتح / الأبيض
+        const blueWhiteMat = new THREE.MeshStandardMaterial({ color: 0x5a9bc8, roughness: 0.8 });
+        const whiteWoodMat = new THREE.MeshStandardMaterial({ color: 0xf5f3ea, roughness: 0.85 });
+        const roofMat = new THREE.MeshStandardMaterial({ color: 0x2e6690, roughness: 0.7 });
+        const metalMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8, roughness: 0.25 });
+
+        // مبنى رئيسي
+        const main = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.3, 1.6), whiteWoodMat);
+        main.position.y = 0.7;
+        main.castShadow = true;
+        g.add(main);
+
+        // حواف زرقاء
+        const trim = new THREE.Mesh(new THREE.BoxGeometry(1.84, 0.2, 1.64), blueWhiteMat);
+        trim.position.y = 1.35;
+        g.add(trim);
+
+        // سقف منحدر مزدوج (Gable roof)
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(1.5, 0.9, 4), roofMat);
+        roof.rotation.y = Math.PI / 4;
+        roof.position.y = 1.8;
+        roof.castShadow = true;
+        g.add(roof);
+
+        // خزان حليب ستانلس ستيل كبير (Milk Vat) على الجانب
+        const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 1.4, 16), metalMat);
+        tank.position.set(-0.95, 0.76, 0.1);
+        tank.castShadow = true;
+        g.add(tank);
+
+        const tankCap = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), metalMat);
+        tankCap.position.set(-0.95, 1.46, 0.1);
+        g.add(tankCap);
+
+        // قوارير وأباريق حليب على رف جانبي
+        const shelf = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.08, 0.35), this._mats.millWood);
+        shelf.position.set(0.65, 0.58, 0.85);
+        g.add(shelf);
+
+        for (let i = 0; i < 3; i++) {
+            const jug = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.22, 8), metalMat);
+            jug.position.set(0.48 + i * 0.16, 0.72, 0.85);
+            g.add(jug);
+        }
+
+        // باب ونافذة دافئة
+        const door = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.72, 0.08), this._mats.door);
+        door.position.set(0.0, 0.52, 0.82);
+        g.add(door);
+
+        const win = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.06), this._mats.window);
+        win.position.set(0.0, 1.0, 0.82);
+        g.add(win);
+
+        mergeGroupChildren(g, { name: 'Dairy-body' });
+        this._selectionRing(g);
+        return g;
     }
 
     _basePlate(group, size = 3.4) {

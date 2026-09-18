@@ -60,6 +60,20 @@ class GameStateManager {
                 upgrades: 0
             },
 
+            // Hay Day Storage Separation: Silo (crops only) & Barn (goods, animal products, tools, supplies)
+            storage: {
+                silo: {
+                    capacity: 50,
+                    level: 1,
+                    upgradeSupplies: { nail: 1, wood_plank: 1 }
+                },
+                barn: {
+                    capacity: 50,
+                    level: 1,
+                    upgradeSupplies: { nail: 1, wood_plank: 1, duct_tape: 1 }
+                }
+            },
+
             crops: {
                 active: [],
                 harvested: 0

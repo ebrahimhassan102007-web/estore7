@@ -367,36 +367,28 @@ class ProductionSystemService {
         }
 
         // -----------------------------------------------------
-        // Check inventory capacity
+        // Check Barn storage capacity (Hay Day Barn halt)
         // -----------------------------------------------------
+        import('../systems/InventorySystem.js'); // reference
+        const barnItems = ['flour', 'corn_flour', 'bread', 'corn_bread', 'tomato_pastry', 'carrot_cake', 'cream', 'butter', 'cheese', 'chicken_feed', 'cow_feed', 'sheep_feed', 'pig_feed'];
+        const storage = GameState.get('storage') || {};
+        const barnCap = storage.barn?.capacity || GameState.get('inventory.maxCapacity') || 50;
+        const itemsMap = GameState.get('inventory.items') || {};
+        
+        let barnUsed = 0;
+        for (const [id, it] of Object.entries(itemsMap)) {
+            // Raw crops go to silo, everything else to barn
+            if (!['wheat', 'corn', 'carrot', 'tomato'].includes(id)) {
+                barnUsed += (it?.count || 0);
+            }
+        }
 
-        const inventory =
-            GameState.get(
-                'inventory'
-            );
-
-        const currentCount =
-            Object.values(
-                inventory.items
-            ).reduce(
-                (sum, item) =>
-                    sum + item.count,
-                0
-            );
-
-        if (
-            currentCount +
-            job.outputAmount >
-            inventory.maxCapacity
-        ) {
-
-            Events.emit(
-                'inventory:full'
-            );
-
+        if (barnUsed + job.outputAmount > barnCap) {
+            Events.emit('barn:full');
+            Events.emit('inventory:full', { target: 'barn' });
             return {
                 success: false,
-                error: 'Inventory full'
+                error: 'حظيرة المخزن ممتلئة! لا يمكن جمع المنتج (Barn Full)'
             };
         }
 

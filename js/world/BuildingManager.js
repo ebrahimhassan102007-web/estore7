@@ -46,61 +46,75 @@ export class BuildingManager {
     farmhouse() {
         const g = new THREE.Group();
         g.name = 'Farmhouse';
-        g.position.set(-13, 0, -13);
+        // موضع حي سكني هادئ شمال غرب
+        g.position.set(-14, 0, -14);
 
         const blue = mat(0x397f9f);
         const white = mat(0xf5ead7);
         const stone = mat(0x77756b);
         const roof = mat(0x354653);
         const wood = mat(0x6a3925);
+        const warmGlow = mat(0xffca6a, 0.4, 0);
 
-        box(g, [8, 0.8, 7], [0, 0.4, 0], stone);
-        box(g, [7.6, 4, 6.6], [0, 2.7, 0], blue);
+        // مقياس مكبّر حقيقي (12 × 9.5) ليقرأ كمنزل ريفي حقيقي لا لعبة
+        box(g, [12, 0.8, 9.5], [0, 0.4, 0], stone);
+        box(g, [11.4, 5.2, 8.8], [0, 3.4, 0], blue);
 
-        const r = new THREE.Mesh(new THREE.ConeGeometry(5.6, 3, 4), roof);
+        // سقف هرمي كبير
+        const r = new THREE.Mesh(new THREE.ConeGeometry(8.2, 4.2, 4), roof);
         r.rotation.y = Math.PI / 4;
-        r.position.y = 6;
+        r.position.y = 8.1;
         r.castShadow = true;
         g.add(r);
 
-        box(g, [8.6, 0.3, 2.2], [0, 1.2, 4.2], mat(0x9a6a3e));
-        [-3.4, 3.4].forEach((x) => box(g, [0.25, 3, 0.25], [x, 2.7, 4.2], white));
+        // شرفة خشبية عريضة
+        box(g, [12.6, 0.35, 3.2], [0, 1.2, 5.8], mat(0x9a6a3e));
+        [-5.2, -2.6, 2.6, 5.2].forEach((x) => box(g, [0.3, 3.8, 0.3], [x, 3.1, 5.8], white));
+        box(g, [12.8, 0.25, 3.4], [0, 5.0, 5.8], roof);
 
-        [-2.4, 2.4].forEach((x) => {
-            box(g, [1.25, 1.5, 0.15], [x, 3.15, 3.39], white);
-            box(g, [0.08, 1.4, 0.2], [x, 3.15, 3.5], blue);
+        // نوافذ بتوهج دافئ
+        [-3.6, 3.6].forEach((x) => {
+            box(g, [1.6, 1.8, 0.15], [x, 3.8, 4.45], white);
+            box(g, [1.3, 1.5, 0.18], [x, 3.8, 4.48], warmGlow);
         });
+
+        // صندوق بريد خشبي على الرصيف
+        const mb = new THREE.Group();
+        mb.position.set(5.5, 0, 7.5);
+        box(mb, [0.15, 1.3, 0.15], [0, 0.65, 0], wood);
+        box(mb, [0.4, 0.3, 0.55], [0, 1.3, 0], mat(0x8a3324));
+        g.add(mb);
 
         let doorCollider = null;
         if (this.collision) {
             const walls = this.collision.addBuildingWalls({
                 id: 'farmhouse',
-                x: -13,
-                z: -13,
-                width: 7.6,
-                depth: 6.6,
-                thickness: 0.42,
-                height: 4.2,
-                door: { side: 'south', width: 1.85 }
+                x: -14,
+                z: -14,
+                width: 11.4,
+                depth: 8.8,
+                thickness: 0.5,
+                height: 5.2,
+                door: { side: 'south', width: 2.4 }
             });
             doorCollider = walls.door;
         }
 
         const door = new InteractiveDoor({
             parent: g,
-            hinge: { x: -0.9, y: 0.85, z: 3.38 },
-            size: { w: 1.8, h: 3.0, d: 0.14 },
+            hinge: { x: -1.2, y: 0.85, z: 4.42 },
+            size: { w: 2.4, h: 3.8, d: 0.16 },
             material: wood,
             openAngle: Math.PI * 0.82,
             id: 'farmhouse-door',
             label: 'باب البيت',
             collider: doorCollider,
-            interactOffset: { x: 0.9, y: 0, z: 0.7 }
+            interactOffset: { x: 1.2, y: 0, z: 0.9 }
         });
+        door.isHouseDoor = true; // علامة لدخول البيت الداخلي
         this.doors.push(door);
 
         this.group.add(g);
-        // الدمج لا يلمس الـ pivot (Group) فالباب يبقى متحركًا
         mergeGroupChildren(g, { name: 'Farmhouse-body' });
     }
 
@@ -246,58 +260,62 @@ export class BuildingManager {
     }
 
     windmill() {
-        // طاحونة هواء أكبر: قاعدة حجرية + برج خشبي + سقف + 4 شفرات خشب
-        // بأشرعة تدور ككتلة واحدة مدموجة (mergeSubtree يحفظ الدوران).
+        // طاحونة هواء عملاقة كمعلم أثري للمزرعة (Landmark Scale)
         const g = new THREE.Group();
         g.name = 'Windmill';
-        g.position.set(5, 0, -22);
+        g.position.set(5, 0, -24);
 
         const stone = mat(0x8d8578);
         const wood = mat(0x5c432c);
         const cream = mat(0xe8d9b8);
         const sailMat = mat(0xf3ead3);
 
-        const base = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 2.1, 1.2, 10), stone);
-        base.position.y = 0.6;
+        // قاعدة حجرية ضخمة
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 4.0, 2.2, 12), stone);
+        base.position.y = 1.1;
         base.castShadow = true;
         base.receiveShadow = true;
         g.add(base);
 
-        const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.5, 5.5, 10), cream);
-        tower.position.y = 3.95;
+        // برج شاهق
+        const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2.9, 10.5, 12), cream);
+        tower.position.y = 7.45;
         tower.castShadow = true;
         tower.receiveShadow = true;
         g.add(tower);
 
-        for (const y of [2.4, 4.6]) {
-            const band = new THREE.Mesh(new THREE.CylinderGeometry(1.32, 1.42, 0.22, 10), wood);
+        for (const y of [4.5, 8.5, 12.0]) {
+            const band = new THREE.Mesh(new THREE.CylinderGeometry(2.35, 2.55, 0.35, 12), wood);
             band.position.y = y;
             g.add(band);
         }
 
-        const roof = new THREE.Mesh(new THREE.ConeGeometry(1.35, 1.3, 10), wood);
-        roof.position.y = 7.35;
+        // سقف مدبب
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(2.4, 2.6, 12), wood);
+        roof.position.y = 13.9;
         roof.castShadow = true;
         g.add(roof);
 
-        const door = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.5, 0.15), wood);
-        door.position.set(0, 1.85, 1.28);
+        // باب مدخل
+        const door = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.25), wood);
+        door.position.set(0, 1.6, 3.45);
         g.add(door);
 
+        // 4 شفرات عملاقة تدور بأشرعة قماشية
         const rotor = new THREE.Group();
-        rotor.position.set(0, 6.1, 1.45);
-        const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.4, 10), wood);
+        rotor.position.set(0, 11.8, 2.6);
+        const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.7, 12), wood);
         hub.rotation.x = Math.PI / 2;
         rotor.add(hub);
         for (let i = 0; i < 4; i++) {
             const arm = new THREE.Group();
             arm.rotation.z = (i * Math.PI) / 2;
-            const spar = new THREE.Mesh(new THREE.BoxGeometry(0.14, 4.6, 0.1), wood);
-            spar.position.y = 2.3;
+            const spar = new THREE.Mesh(new THREE.BoxGeometry(0.22, 9.2, 0.16), wood);
+            spar.position.y = 4.6;
             spar.castShadow = true;
             arm.add(spar);
-            const sail = new THREE.Mesh(new THREE.BoxGeometry(1.05, 3.3, 0.05), sailMat);
-            sail.position.set(0.58, 2.75, 0);
+            const sail = new THREE.Mesh(new THREE.BoxGeometry(2.1, 6.8, 0.08), sailMat);
+            sail.position.set(1.15, 5.5, 0);
             sail.castShadow = true;
             arm.add(sail);
             rotor.add(arm);
@@ -310,10 +328,10 @@ export class BuildingManager {
             this.collision.addBox({
                 id: 'windmill',
                 x: 5,
-                z: -22,
-                width: 3.4,
-                depth: 3.4,
-                height: 8,
+                z: -24,
+                width: 6.5,
+                depth: 6.5,
+                height: 15,
                 tag: 'building'
             });
         }
