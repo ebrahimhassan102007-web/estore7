@@ -2174,7 +2174,9 @@ class MyFarmApp {
         );
 
         this.lights.sun.intensity = 0.18 + dayFactor * 1.95;
-        this.lights.sun.color.setHex(dayFactor > 0.55 ? 0xfff6e4 : 0xffb066);
+        // الشتاء أبرد ضوءًا — صبغة مقروءة دون محاكاة طقس كاملة.
+        const isWinter = clock.season === 'winter';
+        this.lights.sun.color.setHex(dayFactor > 0.55 ? (isWinter ? 0xe9f1ff : 0xfff6e4) : 0xffb066);
 
         if (this.lights.ambient) {
             this.lights.ambient.intensity = 0.42 + dayFactor * 1.0;
@@ -2210,6 +2212,15 @@ class MyFarmApp {
         try {
             this.environment?.buildings?.setNightFactor?.(1 - dayFactor);
         } catch (e) { /* المصابيح ديكور — لا تكسر الإقلاع */ }
+
+        // --- الصبغة الموسمية (عند تغيّر الموسم فقط) ---
+        try {
+            const season = clock.season || 'spring';
+            if (season !== this._seasonApplied) {
+                this._seasonApplied = season;
+                this.environment?.setSeason?.(season);
+            }
+        } catch (e) { /* الصبغة ديكور — لا تكسر الإقلاع */ }
 
         // --- ساعة الـ HUD + رمز الوقت ---
         this.hud?.updateClock?.(

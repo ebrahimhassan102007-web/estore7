@@ -26,19 +26,39 @@ export class FoliageManager {
 
     build() {
         this.buildGrass();
+        this.buildTufts();
         this.buildFlowers();
         this.buildTrees();
     }
 
+    /** مناطق يُمنع فيها العشب/الزهور: ممرات + حقول + حظائر + سوق + بركة. */
+    _isClearOfZones(x, z) {
+        if (Math.abs(x) < 2.6) return false;
+        if (Math.abs(x) < 7.5 && z > -18 && z < 14) return false;
+        if (x > 7 && x < 26.5 && z > -2 && z < 24) return false;
+        if (x > -20.5 && x < -11.5 && z > -11 && z < 13.5) return false;
+        if (Math.abs(x + 4) < 4.2 && Math.abs(z - 17) < 3.4) return false;
+        if (Math.hypot(x + 25, z - 20) < 6.6) return false;
+        return true;
+    }
+
+    /** الصبغة الموسمية للعشب (تُستدعى من Environment.setSeason). */
+    setSeasonTint(hex) {
+        if (this._bladeMat) this._bladeMat.color.setHex(hex);
+        if (this._tuftMat) this._tuftMat.color.setHex(hex);
+    }
+
     buildGrass() {
-        const bladeGeo = new THREE.ConeGeometry(0.045, 0.48, 3);
-        bladeGeo.translate(0, 0.24, 0);
+        // عشب قصير (0.3 بدل 0.48) — لا أشواك عملاقة ولا تصادم عليه أبدًا.
+        const bladeGeo = new THREE.ConeGeometry(0.04, 0.3, 3);
+        bladeGeo.translate(0, 0.15, 0);
 
         const bladeMat = new THREE.MeshStandardMaterial({
             color: 0x4d9a2c,
             roughness: 1,
             flatShading: true
         });
+        this._bladeMat = bladeMat;
         bladeMat.customProgramCacheKey = () => 'wind-grass-v1';
         bladeMat.onBeforeCompile = (shader) => {
             shader.uniforms.uTime = this._grassUniforms.uTime;
@@ -63,12 +83,13 @@ export class FoliageManager {
         };
 
         const points = [];
-        for (let i = 0; i < 1400; i++) {
+        for (let i = 0; i < 1600; i++) {
             const x = (Math.random() - 0.5) * 68;
             const z = (Math.random() - 0.5) * 68;
-            if (Math.abs(x) < 2.5 || (Math.abs(x) < 7 && z > -18 && z < 14)) continue;
+            if (!this._isClearOfZones(x, z)) continue;
             points.push([x, z]);
         }
+        if (points.length === 0) points.push([30, 30]);
 
         this.grass = new THREE.InstancedMesh(bladeGeo, bladeMat, points.length);
         const m = new THREE.Matrix4();
@@ -78,7 +99,7 @@ export class FoliageManager {
 
         points.forEach(([x, z], i) => {
             q.setFromEuler(new THREE.Euler(0, Math.random() * 6.28, (Math.random() - 0.5) * 0.12));
-            s.setScalar(0.7 + Math.random() * 0.85);
+            s.setScalar(0.5 + Math.random() * 0.5);
             m.compose(p.set(x, 0.02, z), q, s);
             this.grass.setMatrixAt(i, m);
         });
@@ -89,22 +110,77 @@ export class FoliageManager {
         this.group.add(this.grass);
     }
 
-    buildFlowers() {
-        const flowerGeo = new THREE.SphereGeometry(0.09, 5, 4);
-        const colors = [0xfff3a0, 0xffffff, 0xe96d9b, 0x8dc8ff];
+    /** خصل عشب أعرض وأقصر بين الشفرات — نداء رسم واحد (InstancedMesh). */
+    buildTufts() {
+        const tuftGeo = new THREE.ConeGeometry(0.1, 0.2, 5);
+        tuftGeo.translate(0, 0.1, 0);
+        this._tuftMat = new THREE.MeshStandardMaterial({
+            color: 0x55a32e,
+            roughness: 1,
+            flatShading: true
+        });
+        const spots = [];
+        for (let i = 0; i < 600; i++) {
+            const x = (Math.random() - 0.5) * 62;
+            const z = (Math.random() - 0.5) * 62;
+            if (!this._isClearOfZones(x, z)) continue;
+            spots.push([x, z]);
+            if (spots.length >= 220) break;
+        }
+        if (spots.length === 0) return;
+        const tufts = new THREE.InstancedMesh(tuftGeo, this._tuftMat, spots.length);
         const m = new THREE.Matrix4();
+        const q = new THREE.Quaternion();
+        const s = new THREE.Vector3();
+        const p = new THREE.Vector3();
+        spots.forEach(([x, z], i) => {
+            q.setFromEuler(new THREE.Euler(0, Math.random() * 6.28, 0));
+            s.setScalar(0.7 + Math.random() * 0.6);
+            m.compose(p.set(x, 0.02, z), q, s);
+            tufts.setMatrixAt(i, m);
+        });
+        tufts.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+        tufts.receiveShadow = true;
+        this.group.add(tufts);
+    }
+
+    buildFlowers() {
+        // الزهرة = ساق + رأس: لا كرات ملوّنة طافية في الهواء.
+        const spots = [];
+        for (let i = 0; i < 400 && spots.length < 120; i++) {
+            const x = (Math.random() - 0.5) * 55;
+            const z = (Math.random() - 0.5) * 55;
+            if (!this._isClearOfZones(x, z)) continue;
+            spots.push([x, z]);
+        }
+        if (spots.length === 0) return;
+
+        const m = new THREE.Matrix4();
+        const stems = new THREE.InstancedMesh(
+            new THREE.CylinderGeometry(0.012, 0.018, 0.24, 5),
+            new THREE.MeshStandardMaterial({ color: 0x37852d, roughness: 1 }),
+            spots.length
+        );
+        spots.forEach(([x, z], i) => {
+            m.makeTranslation(x, 0.12, z);
+            stems.setMatrixAt(i, m);
+        });
+        this.group.add(stems);
+
+        const flowerGeo = new THREE.SphereGeometry(0.085, 6, 5);
+        const colors = [0xfff3a0, 0xffffff, 0xe96d9b, 0x8dc8ff];
         this._flowers = [];
+        const perColor = Math.ceil(spots.length / 4);
 
         for (let c = 0; c < 4; c++) {
             const mesh = new THREE.InstancedMesh(
                 flowerGeo,
                 new THREE.MeshStandardMaterial({ color: colors[c], roughness: 0.7 }),
-                30
+                perColor
             );
-            for (let i = 0; i < 30; i++) {
-                const x = (Math.random() - 0.5) * 55;
-                const z = (Math.random() - 0.5) * 55;
-                m.makeTranslation(x, 0.28, z);
+            for (let i = 0; i < perColor; i++) {
+                const spot = spots[(c * perColor + i) % spots.length];
+                m.makeTranslation(spot[0], 0.26, spot[1]);
                 mesh.setMatrixAt(i, m);
             }
             this.group.add(mesh);
@@ -131,6 +207,20 @@ export class FoliageManager {
             trunk.position.y = 1.7;
             trunk.castShadow = true;
             t.add(trunk);
+
+            // أغصان حقيقية تُدمج مع الجذع في mesh واحد.
+            const branches = [];
+            for (let b = 0; b < 3; b++) {
+                const a = (b / 3) * Math.PI * 2 + n * 0.8;
+                const br = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.11, 1.2, 6), trunkMat);
+                br.position.set(Math.cos(a) * 0.55, 2.75, Math.sin(a) * 0.55);
+                br.rotation.z = Math.cos(a) * 0.75;
+                br.rotation.x = -Math.sin(a) * 0.75;
+                br.castShadow = true;
+                t.add(br);
+                branches.push(br);
+            }
+            mergeMeshes([trunk, ...branches], { name: `Tree-${n}-trunk` });
 
             /*
              * 4 كتل أوراق لكل شجرة × 8 أشجار = 32 نداء رسم.
