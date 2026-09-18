@@ -318,12 +318,23 @@ export class ProductionPanel {
         if (err === 'Inventory full') return 'المخزن ممتلئ! قم بالبيع أو الترقية 📦';
         const needMatch = err.match(/^Need (\d+) (.+)$/);
         if (needMatch) {
-            const item = getItem(needMatch[2]);
+            const item = getItem(needMatch[2]) || {};
             return `تحتاج ${needMatch[1]}× ${item.name || needMatch[2]} ${item.icon || ''}`;
         }
         const levelMatch = err.match(/^Need level (\d+)$/);
         if (levelMatch) return `تحتاج الوصول للمستوى ${levelMatch[1]} 🔒`;
-        return err;
+        // بقية أخطاء ProductionSystem — تعريب العرض فقط.
+        const map = {
+            'Building not found': 'المبنى غير موجود',
+            'Recipe not found': 'الوصفة غير موجودة',
+            'Invalid amount': 'كمية غير صالحة',
+            'Wrong building': 'هذه الوصفة لمبنى آخر',
+            'Recipe has no output': 'الوصفة بلا ناتج',
+            'No production': 'لا يوجد إنتاج بعد',
+            'Production not found': 'المهمة غير موجودة',
+            'Production not ready': 'الإنتاج لم يجهز بعد ⏳'
+        };
+        return map[err] || err;
     }
 
     /* ========================================================

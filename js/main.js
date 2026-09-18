@@ -260,11 +260,12 @@ class PlayerController {
 
         if (this.handSocket) {
             this.handSocket.add(this.toolAnchor);
-            this.toolAnchor.position.set(0, 0.045, 0.02);
+            // الأداة داخل القبضة: ملاصقة لعظمة الرسغ لا طافية بجانبها.
+            this.toolAnchor.position.set(0, 0.012, 0.008);
             this.toolAnchor.rotation.copy(this.toolRestRotation);
         } else {
             this.root.add(this.toolAnchor);
-            this.toolAnchor.position.set(0.38, 0.92, 0.18);
+            this.toolAnchor.position.set(0.34, 0.95, 0.12);
             this.toolAnchor.rotation.set(Math.PI / 6, 0, -Math.PI / 12);
             this.toolRestRotation.copy(this.toolAnchor.rotation);
         }
