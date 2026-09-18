@@ -15,6 +15,13 @@ import { PENS, PEN_HERDS } from './FarmLayout.js';
 const M = (color, extra = {}) =>
     new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...extra });
 
+/* ── High-fidelity animal palette (AAA production) ──────────────── */
+const PIG_FLESH    = 0xf5a8a8;
+const PIG_FLESH_DK = 0xe88d8d;
+const COW_HIDE     = 0xf3eee4;
+const COW_DARK     = 0x2a241f;
+const COW_PINK     = 0xe89a90;
+
 /*
  * مضاعِف الفراء/الصوف الموسمي (Brief §0.4 «animal coats change with
  * hour + season»): المجسمات مدموجة بألوان مخبوزة، فالصبغة تُطبَّق
@@ -168,9 +175,9 @@ class AnimalRig {
     }
 
     buildCow() {
-        const hide = M(0xf3eee4);
-        const dark = M(0x2a241f);
-        const pink = M(0xe89a90);
+        const hide = M(COW_HIDE);
+        const dark = M(COW_DARK);
+        const pink = M(COW_PINK);
         const horn = M(0xf0e6c8, { roughness: 0.55 });
 
         const body = new THREE.Group();
@@ -178,11 +185,15 @@ class AnimalRig {
         this.root.add(body);
         this.parts.body = body;
 
-        this.part(new THREE.BoxGeometry(1.85, 1.05, 0.95), hide, [0, 0, 0], body);
-        this.part(new THREE.SphereGeometry(0.28, 8, 6), dark, [-0.45, 0.22, 0.38], body);
-        this.part(new THREE.SphereGeometry(0.22, 8, 6), dark, [0.55, -0.1, -0.32], body);
-        // ضرع + جرس: صورة بقر مقروءة حتى low-poly.
-        this.part(new THREE.SphereGeometry(0.17, 8, 6), pink, [0, -0.56, -0.08], body);
+        // Heavy-set barrel torso
+        this.part(new THREE.BoxGeometry(1.95, 1.12, 1.02), hide, [0, 0, 0], body);
+        // Holstein black patches (dual-tone textured pattern)
+        this.part(new THREE.SphereGeometry(0.38, 8, 6), dark, [-0.48, 0.24, 0.4], body);
+        this.part(new THREE.SphereGeometry(0.32, 8, 6), dark, [0.58, -0.12, -0.35], body);
+        this.part(new THREE.SphereGeometry(0.28, 8, 6), dark, [-0.12, 0.28, -0.38], body);
+        // Udder (articulated pink)
+        this.part(new THREE.SphereGeometry(0.19, 8, 6), pink, [0, -0.6, -0.08], body);
+        // Bell
         this.part(new THREE.BoxGeometry(0.11, 0.13, 0.06), M(0xd4a017, { metalness: 0.5, roughness: 0.4 }), [0, -0.42, 0.52], body);
 
         const neck = new THREE.Group();
@@ -190,37 +201,50 @@ class AnimalRig {
         body.add(neck);
         this.parts.neck = neck;
 
-        const head = this.part(new THREE.BoxGeometry(0.62, 0.55, 0.7), hide, [0, 0.05, 0.42], neck);
+        // Sculpted snout
+        const head = this.part(new THREE.BoxGeometry(0.65, 0.58, 0.72), hide, [0, 0.05, 0.42], neck);
         this.parts.head = head;
-        this.part(new THREE.BoxGeometry(0.38, 0.28, 0.32), pink, [0, -0.08, 0.48], head);
-        this.part(new THREE.SphereGeometry(0.055, 6, 5), dark, [-0.16, 0.12, 0.36], head);
-        this.part(new THREE.SphereGeometry(0.055, 6, 5), dark, [0.16, 0.12, 0.36], head);
+        this.part(new THREE.BoxGeometry(0.4, 0.3, 0.34), pink, [0, -0.1, 0.5], head);
+        // Eyes
+        this.part(new THREE.SphereGeometry(0.058, 6, 5), dark, [-0.18, 0.14, 0.38], head);
+        this.part(new THREE.SphereGeometry(0.058, 6, 5), dark, [0.18, 0.14, 0.38], head);
 
-        const earL = this.part(new THREE.BoxGeometry(0.18, 0.28, 0.08), hide, [-0.4, 0.22, 0.05], head);
+        const earL = this.part(new THREE.BoxGeometry(0.2, 0.3, 0.09), hide, [-0.42, 0.24, 0.06], head);
         earL.rotation.z = 0.4;
-        const earR = this.part(new THREE.BoxGeometry(0.18, 0.28, 0.08), hide, [0.4, 0.22, 0.05], head);
+        const earR = this.part(new THREE.BoxGeometry(0.2, 0.3, 0.09), hide, [0.42, 0.24, 0.06], head);
         earR.rotation.z = -0.4;
         this.parts.ears = [earL, earR];
 
-        const hornL = this.part(new THREE.ConeGeometry(0.07, 0.36, 6), horn, [-0.22, 0.46, 0.05], head);
-        hornL.rotation.z = 0.45;
-        const hornR = this.part(new THREE.ConeGeometry(0.07, 0.36, 6), horn, [0.22, 0.46, 0.05], head);
-        hornR.rotation.z = -0.45;
+        // Horns — curved outward
+        const hornL = this.part(new THREE.ConeGeometry(0.08, 0.4, 6), horn, [-0.24, 0.5, 0.06], head);
+        hornL.rotation.z = 0.5;
+        const hornR = this.part(new THREE.ConeGeometry(0.08, 0.4, 6), horn, [0.24, 0.5, 0.06], head);
+        hornR.rotation.z = -0.5;
 
-        [[-0.42, -0.32], [0.42, -0.32], [-0.42, 0.32], [0.42, 0.32]].forEach(([lx, lz]) => {
-            this.addLeg(this.root, lx, lz, 0.95, 0.1, 0x2a241f, 0x1a1612);
+        [[-0.44, -0.34], [0.44, -0.34], [-0.44, 0.34], [0.44, 0.34]].forEach(([lx, lz]) => {
+            this.addLeg(this.root, lx, lz, 0.95, 0.1, COW_DARK, 0x1a1612);
         });
 
+        // Bone-chained tail with dynamic swishing
         const tail = new THREE.Group();
-        tail.position.set(0, 1.25, -0.5);
+        tail.position.set(0, 1.28, -0.52);
         this.root.add(tail);
-        this.part(new THREE.CylinderGeometry(0.035, 0.045, 0.7, 5), hide, [0, -0.25, -0.15], tail).rotation.x = 0.5;
-        this.part(new THREE.SphereGeometry(0.08, 6, 5), dark, [0, -0.55, -0.32], tail);
+        // Upper tail segment
+        this.part(new THREE.CylinderGeometry(0.035, 0.045, 0.42, 5), hide, [0, -0.21, -0.08], tail).rotation.x = 0.5;
+        // Lower tail segment (bone chain)
+        const tailLower = new THREE.Group();
+        tailLower.position.set(0, -0.42, -0.15);
+        tail.add(tailLower);
+        this.parts.tailLower = tailLower;
+        this.part(new THREE.CylinderGeometry(0.028, 0.038, 0.32, 5), hide, [0, -0.16, -0.06], tailLower).rotation.x = 0.6;
+        // Tuft
+        this.part(new THREE.SphereGeometry(0.09, 6, 5), dark, [0, -0.32, -0.14], tailLower);
         this.parts.tail = tail;
     }
 
     buildPig() {
-        const pink = M(0xf09e91);
+        const pink = M(PIG_FLESH);
+        const pinkDk = M(PIG_FLESH_DK);
         const dark = M(0x3a221c);
 
         const body = new THREE.Group();
@@ -228,41 +252,54 @@ class AnimalRig {
         this.root.add(body);
         this.parts.body = body;
 
-        const torso = this.part(new THREE.SphereGeometry(0.55, 10, 8), pink, [0, 0, 0], body);
-        torso.scale.set(1.35, 0.85, 0.95);
+        // Volumetric rounded torso — wider girth for authentic pig silhouette
+        const torso = this.part(new THREE.SphereGeometry(0.6, 10, 8), pink, [0, 0, 0], body);
+        torso.scale.set(1.42, 0.82, 1.0);
+
+        // Belly accent (lighter underside)
+        const belly = this.part(new THREE.SphereGeometry(0.42, 8, 6), pinkDk, [0, -0.18, 0.04], body);
+        belly.scale.set(1.1, 0.6, 0.9);
 
         const neck = new THREE.Group();
-        neck.position.set(0, 0.12, 0.42);
+        neck.position.set(0, 0.12, 0.44);
         body.add(neck);
         this.parts.neck = neck;
 
-        const head = this.part(new THREE.SphereGeometry(0.36, 9, 7), pink, [0, 0.06, 0.28], neck);
+        const head = this.part(new THREE.SphereGeometry(0.38, 9, 7), pink, [0, 0.06, 0.28], neck);
         this.parts.head = head;
-        const snout = this.part(new THREE.CylinderGeometry(0.14, 0.17, 0.16, 8), pink, [0, -0.02, 0.38], head);
+        // Sculpted snout with modeled nostrils
+        const snout = this.part(new THREE.CylinderGeometry(0.16, 0.19, 0.18, 8), pinkDk, [0, -0.04, 0.4], head);
         snout.rotation.x = Math.PI / 2;
-        // حلقة خطم داكنة تُبرز الأنف.
-        const snoutRing = this.part(new THREE.CylinderGeometry(0.145, 0.145, 0.05, 8), M(0xc96f61), [0, -0.02, 0.44], head);
+        const snoutRing = this.part(new THREE.CylinderGeometry(0.165, 0.165, 0.06, 8), M(0xc96f61), [0, -0.04, 0.46], head);
         snoutRing.rotation.x = Math.PI / 2;
-        this.part(new THREE.SphereGeometry(0.03, 5, 4), dark, [-0.05, 0.02, 0.47], head);
-        this.part(new THREE.SphereGeometry(0.03, 5, 4), dark, [0.05, 0.02, 0.47], head);
-        this.part(new THREE.SphereGeometry(0.045, 6, 5), dark, [-0.12, 0.12, 0.28], head);
-        this.part(new THREE.SphereGeometry(0.045, 6, 5), dark, [0.12, 0.12, 0.28], head);
+        // Modeled nostrils — two dark indentations on the snout tip
+        this.part(new THREE.SphereGeometry(0.032, 5, 4), dark, [-0.055, 0.02, 0.49], head);
+        this.part(new THREE.SphereGeometry(0.032, 5, 4), dark, [0.055, 0.02, 0.49], head);
+        // Eyes
+        this.part(new THREE.SphereGeometry(0.048, 6, 5), dark, [-0.14, 0.14, 0.3], head);
+        this.part(new THREE.SphereGeometry(0.048, 6, 5), dark, [0.14, 0.14, 0.3], head);
 
-        const earL = this.part(new THREE.ConeGeometry(0.12, 0.22, 5), pink, [-0.22, 0.28, 0.05], head);
-        earL.rotation.z = 0.55;
-        const earR = this.part(new THREE.ConeGeometry(0.12, 0.22, 5), pink, [0.22, 0.28, 0.05], head);
-        earR.rotation.z = -0.55;
+        // Floppy ears — cone shapes angled outward and down
+        const earL = this.part(new THREE.ConeGeometry(0.13, 0.24, 5), pinkDk, [-0.24, 0.3, 0.06], head);
+        earL.rotation.z = 0.6;
+        earL.rotation.x = 0.15;
+        const earR = this.part(new THREE.ConeGeometry(0.13, 0.24, 5), pinkDk, [0.24, 0.3, 0.06], head);
+        earR.rotation.z = -0.6;
+        earR.rotation.x = 0.15;
         this.parts.ears = [earL, earR];
 
-        [[-0.28, -0.28], [0.28, -0.28], [-0.28, 0.28], [0.28, 0.28]].forEach(([lx, lz]) => {
-            this.addLeg(this.root, lx, lz, 0.55, 0.08, 0xf09e91, 0x4a3028);
+        [[-0.3, -0.28], [0.3, -0.28], [-0.3, 0.28], [0.3, 0.28]].forEach(([lx, lz]) => {
+            this.addLeg(this.root, lx, lz, 0.55, 0.085, PIG_FLESH, 0x4a3028);
         });
 
         const tail = new THREE.Group();
-        tail.position.set(0, 0.85, -0.55);
+        tail.position.set(0, 0.85, -0.57);
         this.root.add(tail);
-        const curl = this.part(new THREE.TorusGeometry(0.1, 0.028, 6, 10), pink, [0, 0.08, 0], tail);
+        // Archimedean spiral tail — TorusGeometry forms the curl
+        const curl = this.part(new THREE.TorusGeometry(0.11, 0.03, 6, 12), pinkDk, [0, 0.08, 0], tail);
         curl.rotation.y = Math.PI / 2;
+        // Tail tip nub
+        this.part(new THREE.SphereGeometry(0.032, 5, 4), pink, [0, 0.18, 0.04], tail);
         this.parts.tail = tail;
     }
 
@@ -275,36 +312,45 @@ class AnimalRig {
         this.root.add(body);
         this.parts.body = body;
 
-        this.part(new THREE.DodecahedronGeometry(0.62, 1), wool, [0, 0, 0], body);
-        this.part(new THREE.SphereGeometry(0.38, 8, 6), wool, [0.15, 0.18, 0.1], body);
-        this.part(new THREE.SphereGeometry(0.32, 8, 6), wool, [-0.22, 0.05, -0.12], body);
+        // Multi-lobed procedural wool clusters — main mass + additional lobes
+        this.part(new THREE.DodecahedronGeometry(0.64, 1), wool, [0, 0, 0], body);
+        this.part(new THREE.SphereGeometry(0.42, 8, 6), wool, [0.18, 0.22, 0.12], body);
+        this.part(new THREE.SphereGeometry(0.36, 8, 6), wool, [-0.24, 0.06, -0.14], body);
+        this.part(new THREE.SphereGeometry(0.3, 8, 6), wool, [0, 0.28, -0.22], body);
+        this.part(new THREE.SphereGeometry(0.28, 8, 6), wool, [-0.12, -0.18, 0.16], body);
 
         const neck = new THREE.Group();
         neck.position.set(0, 0.05, 0.5);
         body.add(neck);
         this.parts.neck = neck;
 
-        const head = this.part(new THREE.BoxGeometry(0.38, 0.42, 0.48), dark, [0, 0.02, 0.28], neck);
+        // Dark stylized face mask
+        const head = this.part(new THREE.BoxGeometry(0.4, 0.44, 0.5), dark, [0, 0.02, 0.28], neck);
         this.parts.head = head;
-        // قبعة صوف فوق الرأس — خروف لا ماعز.
-        this.part(new THREE.SphereGeometry(0.17, 7, 5), wool, [0, 0.24, 0.05], head);
-        this.part(new THREE.SphereGeometry(0.04, 6, 5), M(0x111111), [-0.1, 0.1, 0.25], head);
-        this.part(new THREE.SphereGeometry(0.04, 6, 5), M(0x111111), [0.1, 0.1, 0.25], head);
+        // Wool cap on top
+        this.part(new THREE.SphereGeometry(0.18, 7, 5), wool, [0, 0.26, 0.06], head);
+        // Eyes
+        this.part(new THREE.SphereGeometry(0.042, 6, 5), M(0x111111), [-0.11, 0.1, 0.26], head);
+        this.part(new THREE.SphereGeometry(0.042, 6, 5), M(0x111111), [0.11, 0.1, 0.26], head);
 
-        const earL = this.part(new THREE.BoxGeometry(0.12, 0.22, 0.06), dark, [-0.26, 0.08, 0.02], head);
+        // Floppy ears with subtle idle twitching
+        const earL = this.part(new THREE.BoxGeometry(0.13, 0.24, 0.07), dark, [-0.28, 0.08, 0.03], head);
         earL.rotation.z = 0.5;
-        const earR = this.part(new THREE.BoxGeometry(0.12, 0.22, 0.06), dark, [0.26, 0.08, 0.02], head);
+        earL.rotation.x = 0.1;
+        const earR = this.part(new THREE.BoxGeometry(0.13, 0.24, 0.07), dark, [0.28, 0.08, 0.03], head);
         earR.rotation.z = -0.5;
+        earR.rotation.x = 0.1;
         this.parts.ears = [earL, earR];
 
-        [[-0.28, -0.28], [0.28, -0.28], [-0.28, 0.28], [0.28, 0.28]].forEach(([lx, lz]) => {
-            this.addLeg(this.root, lx, lz, 0.7, 0.07, 0x2b241c, 0x1a1612);
+        // 3-segment hooved legs (hip → knee → hoof)
+        [[-0.3, -0.3], [0.3, -0.3], [-0.3, 0.3], [0.3, 0.3]].forEach(([lx, lz]) => {
+            this.addLeg(this.root, lx, lz, 0.72, 0.075, 0x2b241c, 0x1a1612);
         });
 
         const tail = new THREE.Group();
         tail.position.set(0, 0.95, -0.52);
         this.root.add(tail);
-        this.part(new THREE.SphereGeometry(0.12, 6, 5), wool, [0, 0, 0], tail);
+        this.part(new THREE.SphereGeometry(0.13, 6, 5), wool, [0, 0, 0], tail);
         this.parts.tail = tail;
     }
 
@@ -335,6 +381,7 @@ class AnimalRig {
         this.part(new THREE.SphereGeometry(0.025, 5, 4), dark, [-0.06, 0.04, 0.12], head);
         this.part(new THREE.SphereGeometry(0.025, 5, 4), dark, [0.06, 0.04, 0.12], head);
 
+        // Distinct red comb and wattle
         const crest = this.part(
             new THREE.ConeGeometry(isRooster ? 0.07 : 0.045, isRooster ? 0.18 : 0.1, 5),
             comb,
@@ -343,31 +390,37 @@ class AnimalRig {
         );
         this.parts.extras.push(crest);
         if (isRooster) {
+            // Wattle under the beak
             this.part(new THREE.SphereGeometry(0.05, 5, 4), comb, [0, -0.08, 0.12], head);
+            // Additional comb ridge
+            this.part(new THREE.ConeGeometry(0.04, 0.1, 4), comb, [0, 0.22, 0.04], head);
         }
 
+        // Wing flapping during locomotion
         const wingL = this.part(new THREE.SphereGeometry(0.14, 7, 5), M(bodyCol), [-0.26, 0.02, 0], body);
         wingL.scale.set(0.45, 0.7, 1.1);
         const wingR = this.part(new THREE.SphereGeometry(0.14, 7, 5), M(bodyCol), [0.26, 0.02, 0], body);
         wingR.scale.set(0.45, 0.7, 1.1);
         this.parts.wings = [wingL, wingR];
 
+        // Dual-jointed legs — addLeg already creates hip→knee chain
         [[-0.08, 0.04], [0.08, 0.04]].forEach(([lx, lz]) => {
             this.addLeg(this.root, lx, lz, 0.32, 0.035, 0xe9a020, 0xd4880f);
         });
 
+        // Sweeping multi-feather tail (especially for rooster)
         const tail = new THREE.Group();
         tail.position.set(0, 0.42, -0.28);
         this.root.add(tail);
-        const feathers = isRooster ? 5 : 3;
+        const feathers = isRooster ? 7 : 3;
         for (let i = 0; i < feathers; i++) {
             const f = this.part(
-                new THREE.ConeGeometry(0.05, isRooster ? 0.42 : 0.22, 4),
-                M(isRooster ? (i % 2 ? 0x3d5a80 : 0xc45c28) : bodyCol),
-                [(i - feathers / 2) * 0.06, 0.1, -0.08],
+                new THREE.ConeGeometry(0.05, isRooster ? 0.48 : 0.22, 4),
+                M(isRooster ? (i % 3 === 0 ? 0x3d5a80 : i % 3 === 1 ? 0xc45c28 : 0x2d4a6a) : bodyCol),
+                [(i - feathers / 2) * 0.055, 0.12, -0.08],
                 tail
             );
-            f.rotation.x = 1.1 + i * 0.08;
+            f.rotation.x = 1.1 + i * 0.06;
         }
         this.parts.tail = tail;
     }
@@ -450,7 +503,12 @@ class AnimalRig {
 
         if (this.parts.ears) {
             this.parts.ears.forEach((ear, i) => {
-                ear.rotation.z += Math.sin(t * 3 + i) * 0.002;
+                // Subtle idle twitching for sheep ears
+                const twitchBase = this.type === 'sheep' ? 0.004 : 0.002;
+                ear.rotation.z += Math.sin(t * 3 + i) * twitchBase;
+                if (this.type === 'sheep') {
+                    ear.rotation.x += Math.sin(t * 5.5 + i * 2) * 0.001;
+                }
             });
         }
 

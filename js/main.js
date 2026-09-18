@@ -125,10 +125,10 @@ const AMBIENT_BY_SEASON = Object.freeze({
 
 /** كثافة الضباب: سديم صيفي · خريف أثقل · ضباب شتوي بارد · ربيع صافٍ. */
 const FOG_DENSITY_BY_SEASON = Object.freeze({
-    spring: 0.013,
-    summer: 0.017,
-    autumn: 0.020,
-    winter: 0.026
+    spring: 0.010,
+    summer: 0.012,
+    autumn: 0.016,
+    winter: 0.020
 });
 
 /** حدود المزرعة (clamp اللاعب) — تُستبدل بحدود الغرفة داخل البيت. */
@@ -1288,7 +1288,8 @@ class MyFarmApp {
     createScene() {
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(CONFIG.colors.sky);
-        this.scene.fog = new THREE.FogExp2(CONFIG.colors.fog, 0.018);
+        // Exponential height fog (calibrated per Brief §2)
+        this.scene.fog = new THREE.FogExp2(0xdce9f5, 0.012);
     }
 
     createCamera() {
@@ -1303,10 +1304,13 @@ class MyFarmApp {
     }
 
     createLighting() {
-        this.lights.ambient = new THREE.HemisphereLight(0xfff3db, 0x487928, 1.45);
+        /* ── AAA Atmospheric Lighting (Brief §2) ────────────────────── */
+        // Cool ambient skylight (hemisphere: sky blue / warm ground)
+        this.lights.ambient = new THREE.HemisphereLight(0x78B7FF, 0x487928, 0.85);
         this.scene.add(this.lights.ambient);
 
-        this.lights.sun = new THREE.DirectionalLight(0xfff6e4, 2.1);
+        // Warm directional morning sun
+        this.lights.sun = new THREE.DirectionalLight(0xFFF2D1, 1.6);
         this.lights.sun.position.set(22, 38, 18);
         this.lights.sun.castShadow = true;
         this.lights.sun.shadow.mapSize.width = 1024;
@@ -1326,7 +1330,7 @@ class MyFarmApp {
         this.scene.add(this.lights.sun);
         this.scene.add(this.lights.sun.target);
 
-        this.lights.fill = new THREE.DirectionalLight(0x9bd8ff, 0.45);
+        this.lights.fill = new THREE.DirectionalLight(0x78B7FF, 0.45);
         this.lights.fill.position.set(-18, 14, -14);
         this.scene.add(this.lights.fill);
     }
@@ -1954,6 +1958,11 @@ class MyFarmApp {
         this.cameraDistance = this._interiorCameraDistance;
         this.cameraFocus.active = false;
 
+        // Dynamic FOV: clamp to 50° in tight interior to avoid wall clipping
+        this._outsideFOV = this.camera.fov;
+        this.camera.fov = 50;
+        this.camera.updateProjectionMatrix();
+
         // إغلاق أي هدف/مؤشر من المزرعة
         this.activeTarget = null;
         document.getElementById('action-prompt')?.classList.remove('visible');
@@ -1977,6 +1986,11 @@ class MyFarmApp {
         this.player.setBounds(FARM_BOUNDS);
 
         this.cameraDistance = this._outsideCameraDistance || CONFIG.camera.defaultDistance;
+        // Restore exterior FOV
+        if (this._outsideFOV) {
+            this.camera.fov = this._outsideFOV;
+            this.camera.updateProjectionMatrix();
+        }
         this.activeTarget = null;
         document.getElementById('action-prompt')?.classList.remove('visible');
 
@@ -2014,7 +2028,7 @@ class MyFarmApp {
         // الضباب داخل البيت أقصر (غرفة مغلقة) — نحفظ كثافة الخارج أولًا
         if (this.scene?.fog) {
             if (!visible) this._outsideFogDensity = this.scene.fog.density;
-            this.scene.fog.density = visible ? (this._outsideFogDensity || 0.018) : 0.06;
+            this.scene.fog.density = visible ? (this._outsideFogDensity || 0.012) : 0.06;
         }
     }
 
@@ -2522,10 +2536,36 @@ class MyFarmApp {
      * تصادم الكاميرا (رخيص للموبايل): نختبر 8 نقاط من الهدف نحو الموضع
      * المطلوب ونأخذ أبعد نقطة حرة. نتجاهل الصناديق المنخفضة عن ارتفاع
      * الكاميرا (أسوار/أحواض) والحيوانات — المهم المباني والجدران والأشجار.
+     *
+     * يشمل الآن raycast-based occlusion: عند وجود حائط بين الكاميرا
+     * والهدف، نسحب الكاميرا للأمام بدل الانغراس داخل الجدار.
      */
     _resolveCameraCollision(look, desired, out) {
         out.copy(desired);
         if (!this.collision || !this.collision.boxes || this.collision.boxes.length === 0) return out;
+
+        /* ── Raycast occlusion pass: when walls obstruct line of sight,
+           smoothly lerp camera distance forward to prevent clipping ── */
+        if (typeof this.collision.raycastCameraOcclusion === 'function') {
+            const hitT = this.collision.raycastCameraOcclusion(
+                desired.x, desired.y, desired.z,
+                look.x, look.y, look.z,
+                0.5 // skip low obstacles (fences/plants)
+            );
+            if (hitT < 1.0 && hitT > 0.0) {
+                // Pull camera forward to just before the wall (with margin)
+                const pullBack = Math.max(0.05, hitT - 0.08);
+                const rdx = desired.x - look.x;
+                const rdy = desired.y - look.y;
+                const rdz = desired.z - look.z;
+                out.set(
+                    look.x + rdx * pullBack,
+                    look.y + rdy * pullBack + 0.15,
+                    look.z + rdz * pullBack
+                );
+                return out;
+            }
+        }
 
         const steps = 8;
         const dx = desired.x - look.x;

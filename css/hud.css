@@ -574,10 +574,10 @@
 }
 
 /* =========================== JOYSTICK =========================== */
-/* أسفل اليسار الفيزيائي — فوق شريط الأدوات */
+/* أسفل اليسار الفيزيائي — فوق شريط الأدوات مع تباعد كافٍ للإبهام */
 .hud-joystick-zone {
   position: absolute;
-  bottom: calc(var(--hud-hotbar-h) + var(--hud-hotbar-gap) + max(10px, env(safe-area-inset-bottom)));
+  bottom: calc(var(--hud-hotbar-h) + var(--hud-hotbar-gap) + 14px + max(10px, env(safe-area-inset-bottom)));
   left: max(18px, env(safe-area-inset-left));
   right: auto;
   inset-inline-start: auto;
@@ -657,6 +657,38 @@
 }
 
 /* ====================== شاشات صغيرة (أجهزة ضيقة) ====================== */
+/* =========================================================================
+   Storage chest modal (centered on mobile, no overflow)
+   ========================================================================= */
+#game-hud-overlay .chest-modal,
+#game-hud-overlay .hud-sheet.chest-sheet {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(480px, 94vw);
+  max-height: min(70vh, 520px);
+  z-index: 1500;
+}
+
+#game-hud-overlay .chest-modal.is-open,
+#game-hud-overlay .hud-sheet.chest-sheet.is-open {
+  transform: translate(-50%, -50%);
+}
+
+/* =========================================================================
+   Action prompt clearance — prevent overlap with hotbar or joystick
+   ========================================================================= */
+#action-prompt {
+  position: absolute;
+  bottom: calc(var(--hud-hotbar-h) + var(--hud-hotbar-gap) + 72px + max(10px, env(safe-area-inset-bottom)));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 930;
+  pointer-events: auto;
+}
+
+/* Full thumb clearance between bottom-center hotbar and bottom-left joystick */
 @media (max-width: 700px) {
   :root {
     --hud-hotbar-h: 50px;
@@ -1069,62 +1101,83 @@
   background: linear-gradient(180deg, #b9b1a6, #8d8578);
 }
 
-/* ------------------------------ السوق ------------------------------ */
-/* الأسماء هنا مطابقة لـ Components.marketListing */
-#game-hud-overlay .market-item {
+/* ------------------------------ السوق (Grid Redesign) ------------------------------ */
+/* Market body uses a balanced grid layout with product cards */
+#game-hud-overlay .hud-market-grid {
   display: grid;
-  grid-template-columns: 32px 1fr auto auto;
-  align-items: center;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   gap: 8px;
-  padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.72);
+  padding: 4px 0;
+}
+
+#game-hud-overlay .market-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 10px 8px 8px;
+  background: rgba(255, 255, 255, 0.78);
   border: 2px solid #a3703c;
-  border-radius: 14px;
+  border-radius: 16px;
   direction: rtl;
 }
 
-#game-hud-overlay .market-item .m-icon { font-size: 22px; }
+#game-hud-overlay .market-item .m-icon { font-size: 28px; line-height: 1; }
 
-#game-hud-overlay .market-item .m-info { min-width: 0; }
+#game-hud-overlay .market-item .m-info { min-width: 0; width: 100%; }
 
 #game-hud-overlay .market-item .m-name {
   font-size: 13px;
   font-weight: 900;
   color: #4a280c;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 #game-hud-overlay .market-item .m-seller {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   color: #6a3e1b;
 }
 
 #game-hud-overlay .market-item .m-unit-price {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 800;
   color: #8a5520;
 }
 
 #game-hud-overlay .market-item .m-price {
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
   font-weight: 900;
-  color: #2f6d16;
+  color: #fff;
+  background: linear-gradient(180deg, #f0a51c, #d4880f);
+  padding: 2px 10px;
+  border-radius: 999px;
   direction: ltr;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 #game-hud-overlay .market-item button {
+  width: 100%;
   border: 2px solid #fff;
   border-radius: 10px;
-  padding: 5px 10px;
+  padding: 6px 10px;
   font-family: inherit;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   color: #fff;
   cursor: pointer;
-  background: linear-gradient(180deg, #4aa3df, #1f6ea8);
+  background: linear-gradient(180deg, #79d63c, #46961a);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 #game-hud-overlay .market-item button:disabled { opacity: 0.45; }
+#game-hud-overlay .market-item button:active { transform: scale(0.96); }
 
 /* --------------------------- صفوف المخزن --------------------------- */
 /* Components.invItem */
