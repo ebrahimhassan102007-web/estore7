@@ -307,7 +307,9 @@ export class BuildingManager {
         const wood = mat(0xf2eee0);
         const gap = 3.4;
 
-        for (const z of [-5, 18]) {
+        // السور الجنوبي أُبعد إلى z=25: منطقة الحقول (حتى z≈23) والسوق
+        // والحظائر كلها داخله، وقوس الترحيب يقف في فجوة بوابته.
+        for (const z of [-5, 25]) {
             for (let x = -27; x <= 27; x += 3) {
                 if (Math.abs(x) < gap) continue;
                 box(this.group, [0.16, 1.6, 0.16], [x, 0.8, z], wood);

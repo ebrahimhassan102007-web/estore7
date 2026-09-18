@@ -66,6 +66,24 @@ export class Environment {
             pebbles.setMatrixAt(i, mt);
         }
         this.group.add(pebbles);
+
+        // ممرات المناطق: لا تصادم عليها (ديكور مسطّح)، وارتفاعات متدرجة
+        // قليلًا حتى لا يتصارع z-fighting عند التقاطعات.
+        this._spurPath(14.5, -7.5, 21, 3, 0.02);   // شرق ↔ غرب شمال الحقول
+        this._spurPath(6.5, 7, 3, 30, 0.025);      // غرب منطقة الحقول طوليًا
+        this._spurPath(-10, 2, 2.5, 22, 0.02);     // أمام حظائر الحيوانات غربًا
+    }
+
+    _spurPath(x, z, width, length, y) {
+        const spur = new THREE.Mesh(
+            new THREE.PlaneGeometry(width, length),
+            new THREE.MeshStandardMaterial({ color: 0xc49355, roughness: 1 })
+        );
+        spur.rotation.x = -Math.PI / 2;
+        spur.position.set(x, y, z);
+        spur.receiveShadow = true;
+        this.group.add(spur);
+        return spur;
     }
 
     buildSky() {

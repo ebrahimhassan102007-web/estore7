@@ -117,9 +117,10 @@ export class FoliageManager {
         const leafMats = [0x2f792e, 0x438f32, 0x65a83a].map(
             (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.9, flatShading: true })
         );
+        // شجرتان كانتا داخل منطقة الحقول الجديدة — أُبعدتا لشرقها.
         const coords = [
             [-23, -12], [-25, 2], [-22, 17], [22, -16],
-            [25, 4], [22, 20], [-12, -27], [13, -27]
+            [27.5, 9], [27.5, 20], [-12, -27], [13, -27]
         ];
 
         coords.forEach(([x, z], n) => {

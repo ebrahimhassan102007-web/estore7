@@ -13,23 +13,25 @@ export const LAND_CONFIG = Object.freeze({
     hitsRequired: 4, // 4 ضربات فأس لتجهيز الأرض بالكامل
     baseUnlocked: ['field_center_left', 'field_center_right'],
     
-    // تصميم وتوزيع الحقول: 2 أساسية + 10 حقول قابلة للشراء حول المزرعة
+    // منطقة الحقول المخصصة شرق المزرعة (3 أعمدة × 4 صفوف)، بعيدًا عن
+    // البيت/الحظيرة/الطاحونة/السوق. الممرات تصلها (انظر Environment).
+    // المعرّفات القديمة محفوظة عمدًا حتى لا تنكسر الحفوظات والخانات.
     fieldsLayout: [
-        // الحقول الأساسية المجانية في مركز المزرعة
-        { id: 'field_center_left',  x: -3.8, z: -3.5, base: true },
-        { id: 'field_center_right', x:  3.8, z: -3.5, base: true },
+        // الحقول الأساسية المجانية (أول صف في منطقة الحقول)
+        { id: 'field_center_left',  x: 10.5, z: 2.0, base: true },
+        { id: 'field_center_right', x: 16.5, z: 2.0, base: true },
 
-        // الـ 10 أراضٍ المقفولة الموزعة بشكل متناسق ومحيط بالمزرعة
-        { id: 'land_north_1',  x: -7.6, z: -11.0 },
-        { id: 'land_north_2',  x:  0.0, z: -11.0 },
-        { id: 'land_north_3',  x:  7.6, z: -11.0 },
-        { id: 'land_west_1',   x: -11.4, z: -3.5 },
-        { id: 'land_west_2',   x: -11.4, z:  4.0 },
-        { id: 'land_east_1',   x:  11.4, z: -3.5 },
-        { id: 'land_east_2',   x:  11.4, z:  4.0 },
-        { id: 'land_south_1',  x: -7.6, z:  11.5 },
-        { id: 'land_south_2',  x:  0.0, z:  11.5 },
-        { id: 'land_south_3',  x:  7.6, z:  11.5 }
+        // الـ 10 أراضٍ المقفولة داخل منطقة الحقول فقط
+        { id: 'land_north_1',  x: 22.5, z: 2.0 },
+        { id: 'land_north_2',  x: 10.5, z: 8.2 },
+        { id: 'land_north_3',  x: 16.5, z: 8.2 },
+        { id: 'land_west_1',   x: 22.5, z: 8.2 },
+        { id: 'land_west_2',   x: 10.5, z: 14.4 },
+        { id: 'land_east_1',   x: 16.5, z: 14.4 },
+        { id: 'land_east_2',   x: 22.5, z: 14.4 },
+        { id: 'land_south_1',  x: 10.5, z: 20.6 },
+        { id: 'land_south_2',  x: 16.5, z: 20.6 },
+        { id: 'land_south_3',  x: 22.5, z: 20.6 }
     ]
 });
 
@@ -69,6 +71,30 @@ class LandSystemService {
             } catch (err) {
                 console.warn('[LandSystem] Save Init notice:', err);
             }
+        }
+
+        // ترحيل لمرة واحدة: الحفوظات القديمة تحمل مواقع الحقول المبعثرة
+        // (بعضها تحت المباني) — ننقلها لمنطقة الحقول مع بقاء كل شيء آخر
+        // (شراء/تجهيز/خانات/محاصيل) كما هو تمامًا.
+        try {
+            const layoutById = {};
+            for (const cfg of LAND_CONFIG.fieldsLayout) layoutById[cfg.id] = cfg;
+            let migrated = false;
+            for (const tile of stateTiles) {
+                const cfg = tile && layoutById[tile.id];
+                if (cfg && (tile.posX !== cfg.x || tile.posZ !== cfg.z)) {
+                    tile.posX = cfg.x;
+                    tile.posZ = cfg.z;
+                    migrated = true;
+                }
+            }
+            if (migrated) {
+                GameState.set('farm.tiles', stateTiles);
+                SaveManager.save();
+                console.log('[LandSystem] Migrated plots to the dedicated field zone.');
+            }
+        } catch (err) {
+            console.warn('[LandSystem] Migration notice:', err);
         }
 
         this.fields = stateTiles;
