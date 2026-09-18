@@ -45,13 +45,19 @@ const CONFIG = Object.freeze({
         fov: 46,
         near: 0.1,
         far: 260,
-        defaultDistance: 7.5,
-        minDistance: 3.5,
-        maxDistance: 13.0,
-        minPitch: -0.05,
-        maxPitch: 0.68,
-        defaultPitch: 0.44, // زاوية تجعل المزرعة والأرض تغطي 80% من الشاشة
-        targetHeight: 1.15
+        // PUBG-style third person: أبعد من قبل حتى تُرى المزرعة،
+        // وزاوية ميل ~41° (ضمن 35–50°) واللاعب أسفل-منتصف الكادر.
+        defaultDistance: 11.5,
+        minDistance: 5.0,
+        maxDistance: 16.0,
+        minPitch: 0.32,
+        maxPitch: 0.98,
+        defaultPitch: 0.72,
+        targetHeight: 1.0,
+        // إزاحة الكتف (يمين الكاميرا) + نقطة النظر أمام اللاعب
+        // حتى يبقى اللاعب في أسفل-منتصف الشاشة بدل مركزها.
+        shoulderOffset: 0.9,
+        lookAhead: 1.7
     },
     performance: {
         maxPixelRatio: 2
@@ -2025,6 +2031,48 @@ class MyFarmApp {
         this.canvas.addEventListener('pointerleave', releasePointer);
     }
 
+    /**
+     * تصادم الكاميرا (رخيص للموبايل): نختبر 8 نقاط من الهدف نحو الموضع
+     * المطلوب ونأخذ أبعد نقطة حرة. نتجاهل الصناديق المنخفضة عن ارتفاع
+     * الكاميرا (أسوار/أحواض) والحيوانات — المهم المباني والجدران والأشجار.
+     */
+    _resolveCameraCollision(look, desired, out) {
+        out.copy(desired);
+        if (!this.collision || !this.collision.boxes || this.collision.boxes.length === 0) return out;
+
+        const steps = 8;
+        const dx = desired.x - look.x;
+        const dy = desired.y - look.y;
+        const dz = desired.z - look.z;
+
+        for (let i = 0; i <= steps; i++) {
+            const t = 1 - i / steps;
+            const x = look.x + dx * t;
+            const y = look.y + dy * t;
+            const z = look.z + dz * t;
+            if (!this._cameraPointBlocked(x, y, z)) {
+                out.set(x, y, z);
+                return out;
+            }
+        }
+        // كل المسار مسدود: التصق بنقطة النظر بدل الدخول في الحائط.
+        out.set(look.x + dx * 0.08, look.y + dy * 0.08 + 0.4, look.z + dz * 0.08);
+        return out;
+    }
+
+    _cameraPointBlocked(x, y, z) {
+        const boxes = this.collision.boxes;
+        for (let i = 0; i < boxes.length; i++) {
+            const box = boxes[i];
+            if (!box.solid) continue;
+            if (box.tag === 'animal') continue;
+            if (box.maxY < y - 0.6) continue; // الصندوق أقصر من الكاميرا
+            if (box.minY > y + 0.4) continue;
+            if (box.distanceToPoint(x, z) < 0.5) return true;
+        }
+        return false;
+    }
+
     resize() {
         if (!this.camera || !this.renderer) return;
         const width = window.innerWidth;
@@ -2206,20 +2254,37 @@ class MyFarmApp {
             } else {
                 this.cameraFocus.active = false;
 
-                // كاميرا طرف ثالث متوازنة مع المشهد
+                // كاميرا طرف ثالث PUBG-style: تتبّع الموضع فقط (lerp)،
+                // والـ yaw لا يتغير إلا بسحب النظر/القرص — المشي لا يديرها أبدًا.
                 const horizontalDist = this.cameraDistance * Math.cos(this.cameraPitch);
                 const verticalDist = this.cameraDistance * Math.sin(this.cameraPitch);
+                const px = this.player.root.position.x;
+                const py = this.player.root.position.y;
+                const pz = this.player.root.position.z;
 
-                const camX = this.player.root.position.x + Math.sin(this.cameraYaw) * horizontalDist;
-                const camZ = this.player.root.position.z + Math.cos(this.cameraYaw) * horizontalDist;
-                const camY = this.player.root.position.y + CONFIG.camera.targetHeight + verticalDist;
+                const backX = Math.sin(this.cameraYaw);
+                const backZ = Math.cos(this.cameraYaw);
+                const rightX = Math.cos(this.cameraYaw);
+                const rightZ = -Math.sin(this.cameraYaw);
 
-                this.cameraTargetPosition.set(camX, Math.max(0.6, camY), camZ);
+                // نقطة النظر أمام اللاعب ⇒ اللاعب أسفل-منتصف الكادر.
                 this.cameraLookTarget.set(
-                    this.player.root.position.x,
-                    this.player.root.position.y + CONFIG.camera.targetHeight,
-                    this.player.root.position.z
+                    px - backX * CONFIG.camera.lookAhead + rightX * CONFIG.camera.shoulderOffset * 0.55,
+                    py + CONFIG.camera.targetHeight,
+                    pz - backZ * CONFIG.camera.lookAhead + rightZ * CONFIG.camera.shoulderOffset * 0.55
                 );
+
+                // موضع فوق-الكتف: خلف + يمين + فوق.
+                this._desiredCamPos = this._desiredCamPos || new THREE.Vector3();
+                this._desiredCamPos.set(
+                    px + backX * horizontalDist + rightX * CONFIG.camera.shoulderOffset,
+                    py + CONFIG.camera.targetHeight + verticalDist,
+                    pz + backZ * horizontalDist + rightZ * CONFIG.camera.shoulderOffset
+                );
+
+                // تصادم الكاميرا: انسحاب تدريجي بدل الانغراس في الجدران.
+                this._resolveCameraCollision(this.cameraLookTarget, this._desiredCamPos, this.cameraTargetPosition);
+                if (this.cameraTargetPosition.y < 0.7) this.cameraTargetPosition.y = 0.7;
             }
 
             const lerpFactor = 1.0 - Math.exp(-delta * 9.5);
