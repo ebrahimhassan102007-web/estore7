@@ -3,33 +3,43 @@
  * MY FARM 3D - DEDICATED MOBILE HUD CONTROLLER
  * ============================================================
  * الطبقة المرئية فقط: تقرأ GameState وتكتب الأفعال عبر الأنظمة
- * (InventorySystem للبيع/البذور). لا THREE ولا منطق مزرعة هنا.
+ * (InventorySystem للبذور/البيع). لا THREE ولا منطق مزرعة هنا.
+ *
+ * تخطيط مطابق للموك:
+ *   أعلى اليسار  : نجمة المستوى + شريط الخبرة + «المستوى»
+ *   أعلى الوسط   : الكوينز (+) والجواهر (+)
+ *   أعلى اليمين  : شمس/قمر + ساعة + موسم + رقم اليوم
+ *   اليسار       : لوحة المهام الخشبية (ازرع / اسقِ / اجمع حليب)
+ *   اليمين       : قائمة / حقيبة / متجر / خريطة (أزرار خشبية مربعة)
+ *   الأسفل       : شريط الأدوات الخشبي + عدّادات البذور
+ *   أسفل اليسار  : عصا التحكم (فيزيائيًا — لا يعكسها dir=rtl)
+ *   أسفل اليمين  : تفاعل + قفز
+ *
+ * الأزرار الجانبية تُصدر `hud:panel` على ناقل الأحداث؛ اللوحات نفسها
+ * في js/ui/UI.js (متجر/مخزن/طلبات/سوق/خريطة/قائمة).
  * ============================================================
  */
 import { InventorySystem } from '../systems/InventorySystem.js';
-const PRESENTATION_DEFAULTS = {
-  player: {
-    coins: 15230,
-    gems: 245,
-    level: 12,
-    xp: 620,
-    xpToNext: 1500
-  },
-  time: {
-    clock: '08:00 AM',
-    season: 'الربيع',
-    day: 5
-  },
-  hotbar: [
-    { id: 'axe', name: 'فأس', icon: '🪓', type: 'tool', count: null },
-    { id: 'pickaxe', name: 'معول', icon: '⛏️', type: 'tool', count: null },
-    { id: 'water_can', name: 'مرشة مياه', icon: '💧', type: 'tool', count: null },
-    { id: 'wheat_seed', name: 'بذور قمح', icon: '🌾', type: 'seed', cropType: 'wheat', count: 12 },
-    { id: 'corn_seed', name: 'بذور ذرة', icon: '🌽', type: 'seed', cropType: 'corn', count: 8 },
-    { id: 'carrot_seed', name: 'بذور جزر', icon: '🥕', type: 'seed', cropType: 'carrot', count: 5 },
-    { id: 'tomato_seed', name: 'بذور طماطم', icon: '🍅', type: 'seed', cropType: 'tomato', count: 4 }
-  ]
+
+const SEASONS_AR = {
+  spring: 'الربيع',
+  summer: 'الصيف',
+  autumn: 'الخريف',
+  winter: 'الشتاء'
 };
+
+/** ترتيب شريط الأدوات كما في الموك: أدوات ← بذور ← حقيبة. */
+const HOTBAR_LAYOUT = [
+  { id: 'axe',           name: 'فأس',          icon: '🪓', type: 'tool' },
+  { id: 'watering_can',  name: 'إبريق الري',   icon: '💧', type: 'tool' },
+  { id: 'hoe',           name: 'مِحراث',       icon: '⛏️', type: 'tool' },
+  { id: 'pickaxe',       name: 'معول',         icon: '⚒️', type: 'tool' },
+  { id: 'wheat_seed',    name: 'بذور القمح',   icon: '🌾', type: 'seed', cropType: 'wheat',  count: 0 },
+  { id: 'corn_seed',     name: 'بذور الذرة',   icon: '🌽', type: 'seed', cropType: 'corn',   count: 0 },
+  { id: 'carrot_seed',   name: 'بذور الجزر',   icon: '🥕', type: 'seed', cropType: 'carrot', count: 0 },
+  { id: 'tomato_seed',   name: 'بذور الطماطم', icon: '🍅', type: 'seed', cropType: 'tomato', count: 0 },
+  { id: 'bag',           name: 'المخزن',       icon: '🎒', type: 'panel', panel: 'bag' }
+];
 
 export class HUD {
   constructor({ gameState, eventBus, callbacks = {}, enableJoystick = true } = {}) {
@@ -40,21 +50,19 @@ export class HUD {
     this.container = null;
     this.selectedHotbarIndex = 0;
 
-    this.currentHotbar = [...PRESENTATION_DEFAULTS.hotbar];
-    this.currentTime = { ...PRESENTATION_DEFAULTS.time };
+    this.currentHotbar = HOTBAR_LAYOUT.map(item => ({ ...item }));
 
     this.joystickActive = false;
     this.joystickTouchId = null;
     this.joystickCenter = { x: 0, y: 0 };
     this.maxJoystickRadius = 38;
     this.missionsOpen = false;
-    this.bagOpen = false;
   }
 
   getState(path, fallback = null) {
     if (this.gameState && typeof this.gameState.get === 'function') {
       const val = this.gameState.get(path);
-      return val !== undefined ? val : fallback;
+      return val !== undefined && val !== null ? val : fallback;
     }
     return fallback;
   }
@@ -80,52 +88,67 @@ export class HUD {
     const root = document.createElement('div');
     root.id = 'game-hud-overlay';
     root.innerHTML = `
-      <!-- TOP BAR -->
+      <!-- ======================= TOP BAR ======================= -->
       <header class="hud-top-bar">
-        <!-- Level & XP Card -->
+        <!-- المستوى + الخبرة (يسار) -->
         <div class="hud-level-card">
-          <div class="hud-level-badge" id="hud-level-num">1</div>
+          <div class="hud-level-badge">
+            <span class="hud-level-star" aria-hidden="true">★</span>
+            <span id="mf-level-num">1</span>
+          </div>
           <div class="hud-xp-box">
+            <span class="hud-xp-label">المستوى</span>
             <div class="hud-xp-track">
-              <div class="hud-xp-fill" id="hud-xp-fill" style="width: 25%;"></div>
+              <div class="hud-xp-fill" id="mf-xp-fill"></div>
             </div>
-            <span class="hud-xp-text" id="hud-xp-text">25 / 100</span>
+            <span class="hud-xp-text" id="mf-xp-text">0 / 100</span>
           </div>
         </div>
 
-        <!-- Currencies (Coins & Gems Separated) -->
+        <!-- العملات (وسط) -->
         <div class="hud-currencies">
           <div class="hud-currency-item coins">
-            <span class="icon">💰</span>
-            <span id="hud-coins">350</span>
+            <span class="icon" aria-hidden="true">💰</span>
+            <span id="mf-coins">0</span>
+            <button type="button" class="hud-plus" id="hud-btn-add-coins" aria-label="شراء عملات">+</button>
           </div>
           <div class="hud-currency-item gems">
-            <span class="icon">💎</span>
-            <span id="hud-gems">10</span>
+            <span class="icon" aria-hidden="true">💎</span>
+            <span id="mf-gems">0</span>
+            <button type="button" class="hud-plus" id="hud-btn-add-gems" aria-label="شراء جواهر">+</button>
           </div>
         </div>
 
-        <!-- Clock & Season Pill -->
+        <!-- الوقت (يمين) -->
         <div class="hud-time-pill">
-          <span class="clock" id="hud-time">08:00 AM</span>
-          <span class="season" id="hud-season">الربيع - يوم 1</span>
+          <span class="clock">
+            <span class="phase" id="mf-phase" aria-hidden="true">☀️</span>
+            <span id="mf-clock">08:00 ص</span>
+          </span>
+          <span class="season">
+            <span id="mf-season">الربيع</span>
+            <span class="dot" aria-hidden="true">·</span>
+            <span id="mf-day">يوم 1</span>
+          </span>
         </div>
       </header>
 
-      <aside class="hud-utility-stack" aria-label="أدوات المزرعة">
-        <button type="button" class="hud-icon-btn" id="hud-btn-menu" aria-label="القائمة">☰</button>
-        <button type="button" class="hud-icon-btn" id="hud-btn-bag" aria-label="الحقيبة">🎒</button>
-      </aside>
-      <div class="hud-action-stack">
-        <button type="button" class="harvest-button" id="hud-btn-interact" aria-label="تفاعل">🤚</button>
-      </div>
-      <button type="button" class="hud-missions-toggle" id="hud-missions-toggle" aria-label="المهام">📋</button>
-      <div class="hud-missions-panel is-collapsed" id="hud-missions-panel">
+      <!-- ===================== MISSIONS (يسار) ===================== -->
+      <button type="button" class="hud-missions-toggle" id="hud-missions-toggle" aria-label="المهام" aria-expanded="false">📋</button>
+      <div class="hud-missions-panel is-collapsed" id="hud-missions-panel" aria-label="لوحة المهام">
         <div class="missions-header">📋 المهام</div>
         <div class="missions-list" id="hud-missions-list"></div>
       </div>
 
-      <!-- VIRTUAL JOYSTICK -->
+      <!-- ================== UTILITY STACK (يمين) ================== -->
+      <aside class="hud-utility-stack" aria-label="أدوات المزرعة">
+        <button type="button" class="hud-icon-btn" id="hud-btn-menu" aria-label="القائمة">☰</button>
+        <button type="button" class="hud-icon-btn" id="hud-btn-bag" aria-label="الحقيبة">🎒</button>
+        <button type="button" class="hud-icon-btn" id="hud-btn-shop" aria-label="المتجر">🏪</button>
+        <button type="button" class="hud-icon-btn" id="hud-btn-map" aria-label="الخريطة">🗺️</button>
+      </aside>
+
+      <!-- ============ JOYSTICK (أسفل اليسار — فيزيائي) ============ -->
       ${this.enableJoystick ? `
       <div class="hud-joystick-zone" id="hud-joystick-zone">
         <div class="joystick-base" id="hud-joystick-base">
@@ -134,78 +157,86 @@ export class HUD {
       </div>
       ` : ''}
 
-      <!-- BOTTOM CENTER HOTBAR -->
-      <nav class="hud-bottom-hotbar" id="hud-hotbar"></nav>
+      <!-- ========== ACTIONS (أسفل اليمين — فيزيائي) ========== -->
+      <div class="hud-action-stack">
+        <button type="button" class="jump-button" id="hud-btn-jump" aria-label="قفز">⤴️</button>
+        <button type="button" class="harvest-button" id="hud-btn-interact" aria-label="تفاعل">🤚</button>
+      </div>
 
-      <!-- 🎒 الحقيبة: عرض + بيع (المسار: حصاد ← مخزن ← كوينز) -->
-      <section class="hud-sheet" id="hud-bag-sheet" aria-hidden="true">
-        <header class="hud-sheet-head">
-          <span class="hud-sheet-title">🎒 المخزن</span>
-          <span class="hud-sheet-sub" id="hud-bag-capacity">0 / 50</span>
-          <button type="button" class="hud-sheet-close" id="hud-bag-close" aria-label="إغلاق">✕</button>
-        </header>
-        <div class="hud-sheet-body" id="hud-bag-list"></div>
-        <footer class="hud-sheet-foot">
-          <button type="button" class="hud-sheet-wide" id="hud-bag-sell-crops">بيع كل المحاصيل 💰</button>
-        </footer>
-      </section>
+      <!-- ================== BOTTOM HOTBAR ================== -->
+      <nav class="hud-bottom-hotbar" id="hud-hotbar" aria-label="شريط الأدوات"></nav>
     `;
     return root;
   }
 
   bindEvents() {
     if (this.eventBus && typeof this.eventBus.on === 'function') {
-      this.eventBus.on('state:changed', (path, value) => {
-        this.onStateChanged(path, value);
-      });
+      this.eventBus.on('state:changed', (path, value) => this.onStateChanged(path, value));
       this.eventBus.on('quest:progress-updated', () => this.renderMissions());
       this.eventBus.on('quest:completed', () => this.renderMissions());
       this.eventBus.on('quest:claimed', () => this.renderMissions());
+      this.eventBus.on('crop:harvested', () => this.syncSeedCounts());
+      this.eventBus.on('time:hour', () => this.pullClock());
+      this.eventBus.on('time:day', () => this.pullClock());
+      this.eventBus.on('game:tick', () => this.pullClock());
+      this.eventBus.on('inventory:changed', () => this.syncSeedCounts());
+      // أي تغيير في المخزن يحدّث عدّادات البذور
+      this.eventBus.on('state:changed', (path) => {
+        if (path === 'inventory.items' || path === 'inventory') this.syncSeedCounts();
+      });
     }
 
-    if (this.enableJoystick) {
-      this.setupJoystick();
-    }
+    if (this.enableJoystick) this.setupJoystick();
 
     this.renderHotbar();
     this.renderMissions();
 
-    const bagBtn = this.container?.querySelector('#hud-btn-bag');
-    bagBtn?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.toggleBag();
-    });
-
-    this.container?.querySelector('#hud-bag-close')?.addEventListener('click', () => this.toggleBag(false));
-    this.container?.querySelector('#hud-bag-sell-crops')?.addEventListener('click', () => this.sellAllCrops());
-
-    if (this.eventBus && typeof this.eventBus.on === 'function') {
-      // تحديث عدّادات البذور + الحقيبة عند أي تغيير في المخزن
-      this.eventBus.on('state:changed', (path) => {
-        if (path === 'inventory.items') {
-          this.syncSeedCounts();
-          if (this.bagOpen) this.renderBag();
-        }
+    const on = (selector, handler) => {
+      this.container?.querySelector(selector)?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handler(e);
       });
-      this.eventBus.on('crop:harvested', () => this.syncSeedCounts());
-      this.eventBus.on('time:hour', () => this.pullClock());
-      this.eventBus.on('game:tick', () => this.pullClock());
-    }
+    };
 
-    const interactBtn = this.container?.querySelector('#hud-btn-interact');
-    interactBtn?.addEventListener('click', (e) => {
-      e.stopPropagation();
+    on('#hud-btn-menu', () => this.openPanel('menu'));
+    on('#hud-btn-bag', () => this.openPanel('bag'));
+    on('#hud-btn-shop', () => this.openPanel('shop'));
+    on('#hud-btn-map', () => this.openPanel('map'));
+    on('#hud-btn-add-coins', () => this.openPanel('shop', 'coins'));
+    on('#hud-btn-add-gems', () => this.openPanel('shop', 'gems'));
+
+    on('#hud-btn-interact', () => {
       if (typeof this.callbacks.onInteract === 'function') this.callbacks.onInteract();
+    });
+    on('#hud-btn-jump', () => {
+      if (typeof this.callbacks.onJump === 'function') this.callbacks.onJump();
     });
 
     const missionsToggle = this.container?.querySelector('#hud-missions-toggle');
     const missionsPanel = this.container?.querySelector('#hud-missions-panel');
     missionsToggle?.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.missionsOpen = !this.missionsOpen;
-      missionsPanel?.classList.toggle('is-collapsed', !this.missionsOpen);
-      missionsToggle.classList.toggle('is-open', this.missionsOpen);
+      this.setMissionsOpen(!this.missionsOpen);
     });
+    missionsPanel?.addEventListener('click', (e) => e.stopPropagation());
+  }
+
+  setMissionsOpen(open) {
+    this.missionsOpen = !!open;
+    const toggle = this.container?.querySelector('#hud-missions-toggle');
+    const panel = this.container?.querySelector('#hud-missions-panel');
+    panel?.classList.toggle('is-collapsed', !this.missionsOpen);
+    toggle?.classList.toggle('is-open', this.missionsOpen);
+    toggle?.setAttribute('aria-expanded', this.missionsOpen ? 'true' : 'false');
+  }
+
+  /** يفتح إحدى لوحات UI.js (متجر/مخزن/طلبات/سوق/خريطة/قائمة). */
+  openPanel(name, arg) {
+    if (typeof this.callbacks.onOpenPanel === 'function') {
+      this.callbacks.onOpenPanel(name, arg);
+      return;
+    }
+    this._emit('hud:panel', { name, arg });
   }
 
   onStateChanged(path, value) {
@@ -231,37 +262,33 @@ export class HUD {
   }
 
   refreshAll() {
-    this.updateCoins(this.getState('player.coins', PRESENTATION_DEFAULTS.player.coins));
-    this.updateGems(this.getState('player.gems', PRESENTATION_DEFAULTS.player.gems));
-    this.updateLevel(this.getState('player.level', PRESENTATION_DEFAULTS.player.level));
-    this.updateXP(
-      this.getState('player.xp', PRESENTATION_DEFAULTS.player.xp),
-      this.getState('player.xpToNext', PRESENTATION_DEFAULTS.player.xpToNext)
-    );
+    this.updateCoins(this.getState('player.coins', 0));
+    this.updateGems(this.getState('player.gems', 0));
+    this.updateLevel(this.getState('player.level', 1));
+    this.updateXP(this.getState('player.xp', 0), this.getState('player.xpToNext', 100));
     this.renderMissions();
     this.syncSeedCounts();
     this.pullClock();
-    this.updateCapacityPill();
   }
 
   updateCoins(val) {
-    const el = this.container?.querySelector('#hud-coins');
-    if (el) el.textContent = Number(val ?? 0).toLocaleString();
+    const el = this.container?.querySelector('#mf-coins');
+    if (el) el.textContent = Number(val ?? 0).toLocaleString('en-US');
   }
 
   updateGems(val) {
-    const el = this.container?.querySelector('#hud-gems');
-    if (el) el.textContent = Number(val ?? 0).toLocaleString();
+    const el = this.container?.querySelector('#mf-gems');
+    if (el) el.textContent = Number(val ?? 0).toLocaleString('en-US');
   }
 
   updateLevel(val) {
-    const el = this.container?.querySelector('#hud-level-num');
+    const el = this.container?.querySelector('#mf-level-num');
     if (el) el.textContent = val ?? 1;
   }
 
   updateXP(curr, max) {
-    const fill = this.container?.querySelector('#hud-xp-fill');
-    const txt = this.container?.querySelector('#hud-xp-text');
+    const fill = this.container?.querySelector('#mf-xp-fill');
+    const txt = this.container?.querySelector('#mf-xp-text');
     const c = Number(curr ?? 0);
     const m = Number(max ?? 100);
     if (txt) txt.textContent = `${c} / ${m}`;
@@ -270,34 +297,77 @@ export class HUD {
     }
   }
 
+  /* ==========================================================
+     شريط الأدوات — الأدوات ثابتة والبذور تتبع المخزن
+     ========================================================== */
   renderHotbar() {
     const bar = this.container?.querySelector('#hud-hotbar');
     if (!bar) return;
     bar.innerHTML = '';
 
     this.currentHotbar.forEach((item, idx) => {
-      const slot = document.createElement('div');
+      const slot = document.createElement('button');
+      slot.type = 'button';
       slot.className = `hotbar-slot ${idx === this.selectedHotbarIndex ? 'selected' : ''}`;
-      slot.innerHTML = `
-        <span class="slot-icon">${item.icon}</span>
-        ${item.count !== null ? `<span class="slot-badge">${item.count}</span>` : ''}
-      `;
+      if (item.type === 'panel') slot.classList.add('is-panel');
+      slot.setAttribute('aria-label', item.name);
+      slot.dataset.hotbarId = item.id;
+
+      const icon = document.createElement('span');
+      icon.className = 'slot-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = item.icon;
+      slot.appendChild(icon);
+
+      if (item.count !== undefined && item.count !== null) {
+        const badge = document.createElement('span');
+        badge.className = 'slot-badge';
+        badge.textContent = String(item.count);
+        slot.appendChild(badge);
+      }
+
       slot.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (item.type === 'panel') {
+          this.openPanel(item.panel || 'bag');
+          return;
+        }
         this.selectSlot(idx);
       });
       bar.appendChild(slot);
     });
   }
 
+  selectSlot(index) {
+    const item = this.currentHotbar[index];
+    if (!item || item.type === 'panel') return;
+    this.selectedHotbarIndex = index;
+    const slots = this.container?.querySelectorAll('.hotbar-slot') || [];
+    slots.forEach((s, idx) => s.classList.toggle('selected', idx === index));
+    if (this.eventBus) this.eventBus.emit('hotbar:selected', item);
+  }
+
+  getSelectedItem() {
+    const item = this.currentHotbar[this.selectedHotbarIndex];
+    return item && item.type !== 'panel' ? item : this.currentHotbar[0];
+  }
+
+  /** عدد العناصر في المخزن (يظهر على خانة الحقيبة في الشريط). */
+  bagTotal() {
+    const inv = this.getState('inventory', {}) || {};
+    return Object.values(inv.items || {}).reduce((sum, it) => sum + (it?.count || 0), 0);
+  }
+
+  /* ==========================================================
+     المهام — خشبية يسار الشاشة مع شريط تقدّم
+     ========================================================== */
   renderMissions() {
     const listEl = this.container?.querySelector('#hud-missions-list');
     if (!listEl) return;
 
     const quests = window.QuestSystem ? window.QuestSystem.getActiveQuests() : [];
-
-    if (quests.length === 0) {
-      listEl.innerHTML = `<div style="font-size:11px; text-align:center; color:#6a3e1b; padding:4px;">لا توجد مهام</div>`;
+    if (!quests.length) {
+      listEl.innerHTML = '<div class="missions-empty">لا مهام حالياً — ازرع واسقِ واحصد 🌾</div>';
       return;
     }
 
@@ -306,15 +376,15 @@ export class HUD {
       const canClaim = q.completed && !q.claimed;
 
       return `
-        <div class="mission-card ${q.completed ? 'completed' : ''}" style="background:rgba(255,255,255,0.85); border:1.5px solid #a3703c; border-radius:10px; padding:6px; margin-bottom:6px; font-size:11px;">
-          <div class="mission-top" style="display:flex; justify-content:space-between; font-weight:800; color:#4a280c; margin-bottom:3px;">
-            <span>${q.title}</span>
-            <span style="direction:ltr;">${q.progress || 0}/${q.target}</span>
+        <div class="mission-card ${q.completed ? 'completed' : ''}">
+          <div class="mission-top">
+            <span class="mission-title">${q.title}</span>
+            <span class="mission-count">${q.progress || 0}/${q.target}</span>
           </div>
-          <div class="mission-progress-bar" style="width:100%; height:5px; background:rgba(70,35,15,0.2); border-radius:999px; overflow:hidden;">
-            <div class="mission-progress-fill" style="height:100%; background:#5db836; width: ${pct}%"></div>
+          <div class="mission-progress-bar">
+            <div class="mission-progress-fill" style="width: ${pct}%"></div>
           </div>
-          ${canClaim ? `<button type="button" class="mission-claim-btn" data-quest-id="${q.id}" style="margin-top:4px; width:100%; background:#46961a; color:#fff; border:none; border-radius:6px; padding:2px; font-size:10px; font-weight:900; cursor:pointer;">استلام المكافأة</button>` : ''}
+          ${canClaim ? `<button type="button" class="mission-claim-btn" data-quest-id="${q.id}">استلام المكافأة</button>` : ''}
         </div>
       `;
     }).join('');
@@ -331,43 +401,22 @@ export class HUD {
     });
   }
 
-  selectSlot(index) {
-    this.selectedHotbarIndex = index;
-    const slots = this.container?.querySelectorAll('.hotbar-slot') || [];
-    slots.forEach((s, idx) => s.classList.toggle('selected', idx === index));
-    const activeItem = this.currentHotbar[index];
-    if (this.eventBus) {
-      this.eventBus.emit('hotbar:selected', activeItem);
-    }
-  }
-
-  getSelectedItem() {
-    return this.currentHotbar[this.selectedHotbarIndex] || this.currentHotbar[0];
-  }
-
-  consumeSelectedItemCount() {
-    const item = this.getSelectedItem();
-    if (item && item.count !== null && item.count > 0) {
-      item.count -= 1;
-      this.renderHotbar();
-      return true;
-    }
-    return false;
-  }
-
   /* ==========================================================
-     🕐 الساعة (P2) — تُكتب من TimeManager عبر main.js
+     🕐 الساعة — تُكتب من TimeManager عبر main.js
      ========================================================== */
   updateClock(label, icon = '☀️', day = 1, season = 'spring') {
-    const clockEl = this.container?.querySelector('#hud-time');
-    const seasonEl = this.container?.querySelector('#hud-season');
-    if (clockEl && label) clockEl.textContent = `${icon} ${label}`;
+    const clockEl = this.container?.querySelector('#mf-clock');
+    const phaseEl = this.container?.querySelector('#mf-phase');
+    const seasonEl = this.container?.querySelector('#mf-season');
+    const dayEl = this.container?.querySelector('#mf-day');
 
-    const SEASONS_AR = { spring: 'الربيع', summer: 'الصيف', autumn: 'الخريف', winter: 'الشتاء' };
-    if (seasonEl) seasonEl.textContent = `${SEASONS_AR[season] || season} - يوم ${day}`;
+    if (clockEl && label) clockEl.textContent = label;
+    if (phaseEl) phaseEl.textContent = icon || '☀️';
+    if (seasonEl) seasonEl.textContent = SEASONS_AR[season] || season;
+    if (dayEl) dayEl.textContent = `يوم ${day}`;
   }
 
-  /** قراءة الساعة من الوقت الحالي للحالة (بدون import لـ TimeManager). */
+  /** قراءة الساعة من الحالة (بدون import لـ TimeManager). */
   pullClock() {
     const cycle = this.getState('time.dayCycle', 0) || 0;
     const totalMinutes = Math.floor(cycle * 24 * 60);
@@ -375,7 +424,11 @@ export class HUD {
     const minutes = totalMinutes % 60;
     const suffix = hours < 12 ? 'ص' : 'م';
     const h12 = ((hours + 11) % 12) + 1;
-    const icon = hours >= 5 && hours < 8 ? '🌅' : hours >= 8 && hours < 17 ? '☀️' : hours >= 17 && hours < 20 ? '🌇' : '🌙';
+    const icon = hours >= 5 && hours < 8 ? '🌅'
+      : hours >= 8 && hours < 17 ? '☀️'
+        : hours >= 17 && hours < 20 ? '🌇'
+          : '🌙';
+
     this.updateClock(
       `${String(h12).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${suffix}`,
       icon,
@@ -385,7 +438,7 @@ export class HUD {
   }
 
   /* ==========================================================
-     🌱 بذور الـ Hotbar تتبع المخزن الحقيقي
+     🌱 بذور الـ Hotbar تتبع المخزن الحقيقي دائمًا
      ========================================================== */
   syncSeedCounts() {
     let changed = false;
@@ -397,8 +450,17 @@ export class HUD {
         changed = true;
       }
     }
+
+    const bagItem = this.currentHotbar.find(h => h.id === 'bag');
+    if (bagItem) {
+      const total = this.bagTotal();
+      if (bagItem.count !== total) {
+        bagItem.count = total;
+        changed = true;
+      }
+    }
+
     if (changed) this.renderHotbar();
-    else this.updateCapacityPill();
   }
 
   refreshHotbarCounts() {
@@ -408,102 +470,10 @@ export class HUD {
   /**main.js يستدعيها بعد الزراعة — العداد البصري فقط (المخزن هو المرجع). */
   consumeHotbarSeed(cropType) {
     const item = this.currentHotbar.find(h => h.cropType === cropType);
-    if (item && item.count !== null) {
-      item.count = Math.max(0, InventorySystem.count(item.id));
+    if (item) {
+      item.count = InventorySystem.count(item.id);
       this.renderHotbar();
     }
-  }
-
-  /* ==========================================================
-     🎒 الحقيبة — عرض وبيع
-     ========================================================== */
-  toggleBag(force) {
-    const sheet = this.container?.querySelector('#hud-bag-sheet');
-    if (!sheet) return;
-    this.bagOpen = typeof force === 'boolean' ? force : !this.bagOpen;
-    sheet.classList.toggle('is-open', this.bagOpen);
-    sheet.setAttribute('aria-hidden', this.bagOpen ? 'false' : 'true');
-    if (this.bagOpen) this.renderBag();
-  }
-
-  updateCapacityPill() {
-    const el = this.container?.querySelector('#hud-bag-capacity');
-    if (!el) return;
-    const inv = this.getState('inventory', {}) || {};
-    const max = inv.maxCapacity ?? inv.capacity ?? 50;
-    const used = Object.values(inv.items || {}).reduce((sum, it) => sum + (it?.count || 0), 0);
-    el.textContent = `${used} / ${max}`;
-  }
-
-  renderBag() {
-    const list = this.container?.querySelector('#hud-bag-list');
-    if (!list) return;
-    this.updateCapacityPill();
-
-    const rows = InventorySystem.list();
-    if (rows.length === 0) {
-      list.innerHTML = `<div class="hud-bag-empty">المخزن فارغ — احصد محصولًا 🌾</div>`;
-      return;
-    }
-
-    list.innerHTML = rows.map(r => `
-      <div class="hud-bag-row" data-item="${r.id}">
-        <span class="hud-bag-icon">${r.icon}</span>
-        <span class="hud-bag-name">${r.name}</span>
-        <span class="hud-bag-count">×${r.count}</span>
-        <span class="hud-bag-price">${r.sellPrice} 💰</span>
-        <button type="button" class="hud-bag-sell" data-sell="${r.id}">بيع</button>
-        <button type="button" class="hud-bag-sell all" data-sell-all="${r.id}">الكل</button>
-      </div>
-    `).join('');
-
-    list.querySelectorAll('[data-sell]').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.sellItem(btn.dataset.sell, 1);
-      });
-    });
-    list.querySelectorAll('[data-sell-all]').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.sellItem(btn.dataset.sellAll, null);
-      });
-    });
-  }
-
-  sellItem(itemId, amount) {
-    const res = amount === null
-      ? InventorySystem.sellAll(itemId)
-      : InventorySystem.sell(itemId, amount);
-
-    if (!res.success) {
-      this._emit('toast:error', res.error || 'تعذّر البيع');
-      return;
-    }
-    this._emit('toast:success', `💰 بعت ${res.amount} × ${res.name} مقابل ${res.coins}`);
-    this._emit('item:sold', { itemId, amount: res.amount, coins: res.coins });
-    this.renderBag();
-    this.syncSeedCounts();
-  }
-
-  sellAllCrops() {
-    let coins = 0;
-    let units = 0;
-    for (const row of InventorySystem.list()) {
-      if (row.category !== 'crop') continue;
-      const res = InventorySystem.sellAll(row.id);
-      if (res.success) {
-        coins += res.coins;
-        units += res.amount;
-      }
-    }
-    if (units === 0) {
-      this._emit('toast:error', 'لا توجد محاصيل للبيع');
-      return;
-    }
-    this._emit('toast:success', `💰 بعت ${units} محصول مقابل ${coins} عملة`);
-    this.renderBag();
-    this.syncSeedCounts();
   }
 
   _emit(name, payload) {
@@ -512,6 +482,9 @@ export class HUD {
     }
   }
 
+  /* ==========================================================
+     🕹️ عصا التحكم — pointer events (تعمل باللمس والفأرة)
+     ========================================================== */
   setupJoystick() {
     const zone = this.container?.querySelector('#hud-joystick-zone');
     const thumb = this.container?.querySelector('#hud-joystick-thumb');

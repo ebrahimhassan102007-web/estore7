@@ -1,13 +1,21 @@
 /* ==========================================================================
-   MY FARM 3D - PREMIUM MOBILE HUD STYLING
+   MY FARM 3D — HUD (مطابق للموك المرسوم)
+   --------------------------------------------------------------------------
+   قاعدة ذهبية: كل ما يمسكه الإبهام يُثبَّت بإحداثيات فيزيائية
+   (left / right + inset-inline: auto) حتى لا يعكسه dir="rtl".
    ========================================================================== */
 :root {
   --wood-panel-bg: linear-gradient(180deg, #fcedc9 0%, #e6cb9d 100%);
   --wood-panel-border: #814c1e;
+  --wood-btn-bg: linear-gradient(180deg, #8d5b2f 0%, #543016 100%);
   --gold-accent: #ffb800;
   --gem-accent: #00d2ff;
   --green-accent: #5db836;
   --font-tajawal: 'Tajawal', sans-serif;
+
+  /* ارتفاع شريط الأدوات — يرفعه عصا التحكم وأزرار الفعل */
+  --hud-hotbar-h: 58px;
+  --hud-hotbar-gap: 10px;
 }
 
 #game-hud-overlay {
@@ -24,6 +32,10 @@
   box-sizing: border-box;
 }
 
+#game-hud-overlay button {
+  font-family: inherit;
+}
+
 #game-hud-overlay button,
 #game-hud-overlay .hud-level-card,
 #game-hud-overlay .hud-currency-item,
@@ -37,34 +49,37 @@
   pointer-events: auto;
 }
 
-/* ================= TOP HUD CONTAINER ================= */
+/* ============================ TOP BAR ============================ */
+/* direction:ltr حتى يبقى المستوى يسارًا والوقت يمينًا رغم dir=rtl */
 .hud-top-bar {
   position: absolute;
   top: max(10px, env(safe-area-inset-top));
   left: max(10px, env(safe-area-inset-left));
   right: max(10px, env(safe-area-inset-right));
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+  direction: ltr;
   pointer-events: none;
 }
 
 .hud-level-card {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   background: var(--wood-panel-bg);
   border: 2px solid var(--wood-panel-border);
   border-radius: 18px;
-  padding: 4px 10px 4px 8px;
-  min-width: 135px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.7);
+  padding: 4px 10px 4px 6px;
+  min-width: 132px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .hud-level-badge {
-  width: 34px;
-  height: 34px;
+  position: relative;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 35%, #76d941, #3f8618);
   border: 2px solid #fff;
@@ -74,8 +89,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
   flex-shrink: 0;
+}
+
+.hud-level-star {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 15px;
+  line-height: 1;
+  color: #ffe45b;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
 }
 
 .hud-xp-box {
@@ -83,6 +109,15 @@
   flex-direction: column;
   flex: 1;
   gap: 2px;
+  direction: rtl;
+  min-width: 0;
+}
+
+.hud-xp-label {
+  font-size: 9px;
+  font-weight: 900;
+  color: #7a4a1c;
+  letter-spacing: 0.2px;
 }
 
 .hud-xp-track {
@@ -91,13 +126,13 @@
   background: rgba(70, 35, 15, 0.45);
   border-radius: 999px;
   overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.35);
+  border: 1px solid rgba(255, 255, 255, 0.35);
 }
 
 .hud-xp-fill {
   height: 100%;
+  width: 0%;
   background: linear-gradient(90deg, #86e036, #48a315);
-  width: 25%;
   border-radius: inherit;
   transition: width 0.35s ease;
 }
@@ -106,101 +141,149 @@
   font-size: 9px;
   font-weight: 800;
   color: #5a2e0a;
-  text-align: right;
+  text-align: start;
   direction: ltr;
 }
 
+/* --------------------------- currencies --------------------------- */
 .hud-currencies {
   display: flex;
   align-items: center;
   gap: 6px;
+  direction: ltr;
 }
 
 .hud-currency-item {
   background: rgba(25, 15, 5, 0.88);
   border: 2px solid #ffbe44;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
   border-radius: 999px;
-  padding: 3px 10px;
+  padding: 3px 4px 3px 10px;
   display: flex;
   align-items: center;
   gap: 5px;
   color: #fff;
   font-weight: 900;
   font-size: 13px;
-  min-width: 68px;
-  justify-content: center;
+  direction: ltr;
 }
 
-.hud-currency-item.gems {
-  border-color: #00d2ff;
+.hud-currency-item .icon { font-size: 14px; }
+
+.hud-currency-item.gems { border-color: #00d2ff; }
+
+.hud-plus {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid #fff;
+  background: #65bd2f;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
 }
 
+.hud-plus:active { transform: scale(0.9); }
+
+/* ---------------------------- time pill ---------------------------- */
 .hud-time-pill {
   background: rgba(20, 38, 55, 0.88);
   border: 2px solid #64b5f6;
   border-radius: 16px;
-  padding: 3px 9px;
+  padding: 3px 10px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
   color: #fff;
-  min-width: 74px;
+  min-width: 82px;
+  direction: rtl;
 }
 
 .hud-time-pill .clock {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 11px;
   font-weight: 900;
   color: #fff;
+  direction: ltr;
 }
 
+.hud-time-pill .phase { font-size: 12px; line-height: 1; }
+
 .hud-time-pill .season {
+  display: flex;
+  align-items: center;
+  gap: 3px;
   font-size: 9px;
   font-weight: 700;
   color: #a5d6a7;
 }
 
-/* ================= MISSIONS PANEL ================= */
+.hud-time-pill .season .dot { opacity: 0.6; }
+
+/* ============================ MISSIONS ============================ */
 .hud-missions-toggle {
   position: absolute;
-  top: 78px;
+  top: calc(max(10px, env(safe-area-inset-top)) + 56px);
   left: max(12px, env(safe-area-inset-left));
+  right: auto;
+  inset-inline-start: auto;
+  inset-inline-end: auto;
   width: 44px;
   height: 44px;
   border-radius: 14px;
   border: 2px solid #fff4d2;
-  background: linear-gradient(#8d5b2f, #543016);
+  background: var(--wood-btn-bg);
   color: #fff;
   font-size: 20px;
-  box-shadow: 0 4px 0 #321b0c, 0 7px 16px rgba(0,0,0,0.35);
+  box-shadow: 0 4px 0 #321b0c, 0 7px 16px rgba(0, 0, 0, 0.35);
   cursor: pointer;
   z-index: 910;
 }
 
-.hud-missions-toggle.is-open {
-  outline: 2px solid #ffde00;
-}
+.hud-missions-toggle.is-open { outline: 2px solid #ffde00; }
 
 .hud-missions-panel {
   position: absolute;
-  top: 128px;
+  top: calc(max(10px, env(safe-area-inset-top)) + 108px);
   left: max(12px, env(safe-area-inset-left));
+  right: auto;
+  inset-inline-start: auto;
+  inset-inline-end: auto;
   width: 196px;
-  background: linear-gradient(180deg, #fcedc9 0%, #e6cb9d 100%);
-  border: 3px solid #814c1e;
+  background: var(--wood-panel-bg);
+  border: 3px solid var(--wood-panel-border);
   border-radius: 16px;
-  box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
   padding: 8px 10px;
   direction: rtl;
-  pointer-events: auto;
   z-index: 900;
 }
 
-.hud-missions-panel.is-collapsed {
-  display: none;
+.hud-missions-panel.is-collapsed { display: none; }
+
+/* مسامير خشبية أعلى اللوحة */
+.hud-missions-panel::before,
+.hud-missions-panel::after {
+  content: '';
+  position: absolute;
+  top: -9px;
+  width: 12px;
+  height: 18px;
+  border-radius: 4px;
+  background: #5a351b;
 }
+
+.hud-missions-panel::before { left: 20px; }
+.hud-missions-panel::after { right: 20px; }
 
 .missions-header {
   text-align: center;
@@ -216,84 +299,178 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 240px;
+  max-height: min(240px, 42vh);
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
 }
 
-.missions-list::-webkit-scrollbar {
-  display: none;
+.missions-list::-webkit-scrollbar { display: none; }
+
+.missions-empty {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #6a3e1b;
+  padding: 6px 2px;
 }
 
-/* ================= BOTTOM HOTBAR ================= */
+.mission-card {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1.5px solid #a3703c;
+  border-radius: 10px;
+  padding: 6px;
+  font-size: 11px;
+}
+
+.mission-card.completed { border-color: #46961a; }
+
+.mission-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-weight: 800;
+  color: #4a280c;
+  margin-bottom: 3px;
+}
+
+.mission-count { direction: ltr; flex-shrink: 0; }
+
+.mission-progress-bar {
+  width: 100%;
+  height: 5px;
+  background: rgba(70, 35, 15, 0.2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.mission-progress-fill {
+  height: 100%;
+  background: #5db836;
+  border-radius: inherit;
+  transition: width 0.3s ease;
+}
+
+.mission-claim-btn {
+  margin-top: 4px;
+  width: 100%;
+  background: #46961a;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 3px 2px;
+  font-size: 10px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+/* ========================= UTILITY STACK ========================= */
+/* أزرار خشبية مربعة على الحافة اليمنى الفيزيائية */
+.hud-utility-stack {
+  position: absolute;
+  top: calc(max(10px, env(safe-area-inset-top)) + 56px);
+  right: max(12px, env(safe-area-inset-right));
+  left: auto;
+  inset-inline-start: auto;
+  inset-inline-end: auto;
+  display: grid;
+  gap: 9px;
+  z-index: 910;
+}
+
+.hud-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  border: 3px solid #fff4d2;
+  background: var(--wood-btn-bg);
+  box-shadow: 0 4px 0 #321b0c, 0 7px 16px rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font-size: 23px;
+  cursor: pointer;
+}
+
+.hud-icon-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #321b0c; }
+
+/* ============================ HOTBAR ============================ */
 .hud-bottom-hotbar {
   position: absolute;
   bottom: max(10px, env(safe-area-inset-bottom));
-  left: 50%;
-  transform: translateX(-50%);
+  left: max(8px, env(safe-area-inset-left));
+  right: max(8px, env(safe-area-inset-right));
+  margin-inline: auto;
+  width: auto;
+  max-width: min(620px, calc(100% - 16px));
+  height: var(--hud-hotbar-h);
   background: var(--wood-panel-bg);
   border: 3px solid var(--wood-panel-border);
-  border-radius: 22px;
-  padding: 6px 10px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  border-radius: 20px;
+  padding: 5px 7px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
-  gap: 8px;
-  max-width: 96vw;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.hud-bottom-hotbar::-webkit-scrollbar {
-  display: none;
+  justify-content: center;
+  gap: var(--hud-hotbar-gap);
+  direction: ltr;
+  z-index: 920;
 }
 
 .hotbar-slot {
-  width: 50px;
-  height: 50px;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 54px;
+  height: 100%;
+  padding: 0;
   background: linear-gradient(180deg, #743e18 0%, #44220b 100%);
   border: 2px solid #9c5c29;
-  border-radius: 14px;
+  border-radius: 13px;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
   cursor: pointer;
   transition: transform 0.12s, border-color 0.12s;
-  flex-shrink: 0;
-  box-shadow: 0 3px 6px rgba(0,0,0,0.35);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.35);
 }
 
 .hotbar-slot.selected {
   border: 3px solid #ffde00;
   box-shadow: 0 0 12px #ffde00;
-  transform: scale(1.08);
+  transform: scale(1.06);
 }
 
-.slot-icon {
-  font-size: 26px;
-}
+.hotbar-slot.is-panel { background: linear-gradient(180deg, #5b3a1c 0%, #2f1c09 100%); }
+
+.slot-icon { font-size: 22px; line-height: 1; }
 
 .slot-badge {
   position: absolute;
-  bottom: 2px;
-  right: 3px;
+  bottom: 1px;
+  right: 2px;
   font-size: 10px;
   font-weight: 900;
   color: #fff;
-  background: rgba(0,0,0,0.65);
-  padding: 0 5px;
+  background: rgba(0, 0, 0, 0.68);
+  padding: 0 4px;
   border-radius: 8px;
+  direction: ltr;
 }
 
-/* ================= VIRTUAL JOYSTICK ================= */
+/* =========================== JOYSTICK =========================== */
+/* أسفل اليسار الفيزيائي — فوق شريط الأدوات */
 .hud-joystick-zone {
   position: absolute;
-  bottom: max(22px, env(safe-area-inset-bottom));
+  bottom: calc(var(--hud-hotbar-h) + var(--hud-hotbar-gap) + max(10px, env(safe-area-inset-bottom)));
   left: max(18px, env(safe-area-inset-left));
+  right: auto;
+  inset-inline-start: auto;
+  inset-inline-end: auto;
   width: 126px;
   height: 126px;
   touch-action: none;
+  z-index: 915;
 }
 
 .joystick-base {
@@ -303,8 +480,9 @@
   border: 3px solid rgba(255, 255, 255, 0.55);
   border-radius: 50%;
   position: relative;
-  box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
 .joystick-thumb {
@@ -317,39 +495,124 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
   pointer-events: none;
 }
-/* 2026 AAA farm HUD utility and action controls */
-.hud-level-badge::before{content:'★';color:#ffe45b;font-size:12px;margin-inline-end:2px}.hud-currency-item::after{content:'+';display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#65bd2f;border:1px solid white;color:white}.hud-time-pill .clock::before{content:'☀️ ';}.hud-utility-stack{position:absolute;right:max(12px,env(safe-area-inset-right));top:86px;display:grid;gap:9px}.hud-utility-stack button,.hud-action-stack button{display:grid;place-items:center;border:3px solid #fff4d2;background:linear-gradient(#8d5b2f,#543016);box-shadow:0 4px 0 #321b0c,0 7px 16px #0006;color:#fff;border-radius:16px;font-size:23px;width:52px;height:52px}.hud-action-stack{position:absolute;right:max(20px,env(safe-area-inset-right));bottom:max(24px,env(safe-area-inset-bottom));display:flex;align-items:flex-end;gap:10px}.hud-action-stack .harvest-button{width:72px;height:72px;border-radius:50%;font-size:31px;background:linear-gradient(#73d93f,#3c941d)}.hud-action-stack .jump-button{border-radius:50%;background:linear-gradient(#f4b23f,#d27513)}
-.hud-missions-panel:before,.hud-missions-panel:after{content:'';position:absolute;top:-9px;width:12px;height:18px;border-radius:4px;background:#5a351b}.hud-missions-panel:before{left:20px}.hud-missions-panel:after{right:20px}
-@media(max-width:700px){.hud-missions-panel{width:145px;top:72px}.hud-utility-stack{top:70px}.hud-utility-stack button{width:44px;height:44px;font-size:19px}.hud-bottom-hotbar{max-width:58vw}.hotbar-slot{width:44px;height:44px;flex:0 0 auto}.hud-action-stack{bottom:86px}.hud-top-bar{gap:3px}.hud-level-card{min-width:105px}.hud-currency-item{min-width:57px;padding:3px 5px;font-size:11px}.hud-time-pill{min-width:62px}}
 
-/* ============================================================
-   🎒 الحقيبة / شيت البيع (P0: حصاد ← مخزن ← كوينز)
-   ============================================================ */
+/* ============================ ACTIONS ============================ */
+/* أسفل اليمين الفيزيائي: قفز + تفاعل */
+.hud-action-stack {
+  position: absolute;
+  bottom: calc(var(--hud-hotbar-h) + var(--hud-hotbar-gap) + max(10px, env(safe-area-inset-bottom)));
+  right: max(20px, env(safe-area-inset-right));
+  left: auto;
+  inset-inline-start: auto;
+  inset-inline-end: auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  z-index: 915;
+}
+
+.hud-action-stack button {
+  display: grid;
+  place-items: center;
+  border: 3px solid #fff4d2;
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #321b0c, 0 7px 16px rgba(0, 0, 0, 0.4);
+}
+
+.hud-action-stack button:active { transform: translateY(2px); }
+
+.hud-action-stack .harvest-button {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  font-size: 31px;
+  background: linear-gradient(180deg, #73d93f 0%, #3c941d 100%);
+}
+
+.hud-action-stack .jump-button {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  font-size: 22px;
+  background: linear-gradient(180deg, #f4b23f 0%, #d27513 100%);
+}
+
+/* ====================== شاشات صغيرة (أجهزة ضيقة) ====================== */
+@media (max-width: 700px) {
+  :root {
+    --hud-hotbar-h: 50px;
+    --hud-hotbar-gap: 8px;
+  }
+
+  .hud-top-bar { gap: 4px; }
+
+  .hud-level-card { min-width: 0; padding: 3px 7px 3px 5px; }
+  .hud-level-badge { width: 30px; height: 30px; font-size: 13px; }
+  .hud-xp-label { font-size: 8px; }
+  .hud-xp-track { height: 6px; }
+
+  .hud-currency-item { padding: 2px 3px 2px 7px; font-size: 11px; gap: 3px; }
+  .hud-plus { width: 17px; height: 17px; font-size: 12px; }
+  .hud-time-pill { min-width: 0; padding: 2px 7px; }
+  .hud-time-pill .clock { font-size: 10px; }
+  .hud-time-pill .season { font-size: 8px; }
+
+  .hud-missions-toggle { width: 40px; height: 40px; font-size: 18px; }
+  .hud-missions-panel { width: 158px; top: calc(max(10px, env(safe-area-inset-top)) + 98px); }
+
+  .hud-utility-stack { gap: 7px; }
+  .hud-icon-btn { width: 44px; height: 44px; font-size: 19px; border-radius: 14px; }
+
+  .hud-joystick-zone { width: 112px; height: 112px; left: max(12px, env(safe-area-inset-left)); }
+  .joystick-thumb { width: 46px; height: 46px; }
+
+  .hud-action-stack { right: max(14px, env(safe-area-inset-right)); gap: 8px; }
+  .hud-action-stack .harvest-button { width: 62px; height: 62px; font-size: 27px; }
+  .hud-action-stack .jump-button { width: 44px; height: 44px; font-size: 19px; }
+
+  .slot-icon { font-size: 19px; }
+  .slot-badge { font-size: 9px; }
+}
+
+@media (max-width: 360px) {
+  .hud-bottom-hotbar { gap: 4px; padding: 4px; }
+  .slot-icon { font-size: 17px; }
+  .hud-joystick-zone { width: 100px; height: 100px; }
+  .hud-action-stack .harvest-button { width: 56px; height: 56px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #game-hud-overlay * { transition: none !important; animation: none !important; }
+}
+
+/* ==========================================================================
+   🎒🏪📋🗺️ لوحات UI.js — المتجر / المخزن / الطلبات / السوق / الخريطة / القائمة
+   ========================================================================== */
 #game-hud-overlay .hud-sheet {
   position: absolute;
   left: 50%;
   bottom: 0;
   transform: translate(-50%, 105%);
-  width: min(520px, 96vw);
-  max-height: min(62vh, 460px);
+  width: min(560px, 96vw);
+  max-height: min(74vh, 560px);
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, #fcedc9 0%, #e6cb9d 100%);
-  border: 4px solid #814c1e;
+  background: var(--wood-panel-bg);
+  border: 4px solid var(--wood-panel-border);
   border-bottom: none;
   border-radius: 22px 22px 0 0;
-  box-shadow: 0 -10px 34px rgba(0, 0, 0, .38);
-  transition: transform .28s cubic-bezier(.2, .8, .2, 1);
+  box-shadow: 0 -10px 34px rgba(0, 0, 0, 0.38);
+  transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+  direction: rtl;
   pointer-events: auto;
   z-index: 1400;
 }
 
-#game-hud-overlay .hud-sheet.is-open {
-  transform: translate(-50%, 0);
-}
+#game-hud-overlay .hud-sheet.is-open { transform: translate(-50%, 0); }
 
 .hud-sheet-head {
   display: flex;
@@ -360,19 +623,16 @@
   color: #5a2e0a;
 }
 
-.hud-sheet-title {
-  font-size: 16px;
-  font-weight: 900;
-  flex: 1;
-}
+.hud-sheet-title { font-size: 16px; font-weight: 900; flex: 1; }
 
 .hud-sheet-sub {
   font-size: 12px;
   font-weight: 800;
   color: #6a3e1b;
-  background: rgba(255, 255, 255, .55);
+  background: rgba(255, 255, 255, 0.55);
   padding: 2px 8px;
   border-radius: 999px;
+  direction: ltr;
 }
 
 .hud-sheet-close {
@@ -380,19 +640,50 @@
   height: 30px;
   border-radius: 50%;
   border: 2px solid #fff4d2;
-  background: linear-gradient(#8d5b2f, #543016);
+  background: var(--wood-btn-bg);
   color: #fff;
   font-size: 14px;
   font-weight: 900;
   cursor: pointer;
+  flex-shrink: 0;
+}
+
+.hud-sheet-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.hud-sheet-tabs::-webkit-scrollbar { display: none; }
+
+.hud-tab {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border-radius: 12px 12px 0 0;
+  border: 2px solid #a3703c;
+  border-bottom: none;
+  background: rgba(255, 255, 255, 0.45);
+  color: #6a3e1b;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.hud-tab.is-active {
+  background: #fff;
+  color: #3f7a17;
+  border-color: #46961a;
 }
 
 .hud-sheet-body {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: 8px 10px;
+  padding: 10px 12px;
   display: grid;
-  gap: 6px;
+  gap: 8px;
+  align-content: start;
 }
 
 .hud-sheet-foot {
@@ -413,6 +704,15 @@
   cursor: pointer;
 }
 
+.hud-sheet-empty {
+  text-align: center;
+  padding: 16px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #6a3e1b;
+}
+
+/* ------------------------------ المخزن ------------------------------ */
 .hud-bag-row {
   display: grid;
   grid-template-columns: 26px 1fr auto auto auto auto;
@@ -420,7 +720,7 @@
   gap: 7px;
   padding: 6px 8px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, .6);
+  background: rgba(255, 255, 255, 0.6);
   border: 1.5px solid #a3703c;
   color: #4a280c;
   font-weight: 800;
@@ -429,13 +729,13 @@
 
 .hud-bag-icon { font-size: 19px; }
 .hud-bag-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hud-bag-count { font-size: 12px; color: #6a3e1b; }
-.hud-bag-price { font-size: 11px; color: #2f6d16; }
+.hud-bag-count { font-size: 12px; color: #6a3e1b; direction: ltr; }
+.hud-bag-price { font-size: 11px; color: #2f6d16; direction: ltr; }
 
 .hud-bag-row button {
   border: 1.5px solid #fff4d2;
   border-radius: 9px;
-  background: linear-gradient(#c48a3a, #8a5520);
+  background: linear-gradient(180deg, #c48a3a, #8a5520);
   color: #fff;
   font-family: inherit;
   font-size: 11px;
@@ -444,29 +744,350 @@
   cursor: pointer;
 }
 
-.hud-bag-row button.all { background: linear-gradient(#79d63c, #46961a); }
-.hud-bag-row button:active { transform: scale(.94); }
-.hud-bag-empty { text-align: center; padding: 14px; font-size: 12px; color: #6a3e1b; }
+.hud-bag-row button.all { background: linear-gradient(180deg, #79d63c, #46961a); }
+.hud-bag-row button:disabled { opacity: 0.45; }
+.hud-bag-row button:active { transform: scale(0.94); }
 
 @media (max-width: 700px) {
   .hud-bag-row { grid-template-columns: 22px 1fr auto auto; font-size: 12px; }
   .hud-bag-price { display: none; }
 }
 
-/* ============================================================
-   🕹️ التحكم بالأطراف الفيزيائية — RTL لا يعكس يده
-   الجoystick يسار الجهاز فعليًا وزر الفعل يمينه فعليًا.
-   ============================================================ */
-#game-hud-overlay .hud-joystick-zone {
-  left: max(18px, env(safe-area-inset-left));
-  right: auto;
-  inset-inline-start: auto;
-  inset-inline-end: auto;
+/* ------------------------------ المتجر ------------------------------ */
+#game-hud-overlay .shop-item {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 2px solid #a3703c;
+  border-radius: 14px;
+  margin: 0;
+  direction: rtl;
 }
 
-#game-hud-overlay .hud-action-stack {
-  right: max(20px, env(safe-area-inset-right));
-  left: auto;
-  inset-inline-start: auto;
-  inset-inline-end: auto;
+#game-hud-overlay .shop-item.locked { opacity: 0.62; }
+
+#game-hud-overlay .shop-icon { font-size: 26px; }
+
+#game-hud-overlay .shop-name {
+  font-size: 14px;
+  font-weight: 900;
+  color: #4a280c;
+}
+
+#game-hud-overlay .shop-desc {
+  font-size: 11px;
+  font-weight: 700;
+  color: #6a3e1b;
+  margin-top: 2px;
+}
+
+#game-hud-overlay .shop-cost {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #2f6d16;
+  direction: ltr;
+}
+
+#game-hud-overlay .shop-level,
+#game-hud-overlay .shop-unavailable {
+  grid-column: 2 / 4;
+  font-size: 11px;
+  font-weight: 800;
+  color: #b3261e;
+}
+
+#game-hud-overlay .shop-btn {
+  grid-row: 1 / 3;
+  grid-column: 3;
+  align-self: center;
+  padding: 8px 12px;
+  border: 2px solid #fff;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #79d63c, #46961a);
+  color: #fff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+#game-hud-overlay .shop-btn:disabled {
+  background: linear-gradient(180deg, #b9b1a6, #8d8578);
+  cursor: not-allowed;
+}
+
+/* ------------------------------ الطلبات ------------------------------ */
+#game-hud-overlay .order-card {
+  background: rgba(255, 255, 255, 0.72);
+  border: 2px solid #a3703c;
+  border-radius: 14px;
+  padding: 8px 10px;
+  direction: rtl;
+}
+
+#game-hud-overlay .order-card.expired { opacity: 0.6; }
+
+#game-hud-overlay .order-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+#game-hud-overlay .order-customer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 900;
+  color: #4a280c;
+}
+
+#game-hud-overlay .order-timer {
+  font-size: 11px;
+  font-weight: 800;
+  color: #8a5520;
+  direction: ltr;
+}
+
+#game-hud-overlay .order-items { display: grid; gap: 4px; margin-bottom: 6px; }
+
+#game-hud-overlay .order-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #4a280c;
+}
+
+#game-hud-overlay .order-item.missing { color: #b3261e; }
+#game-hud-overlay .order-item .item-owned { margin-inline-start: auto; direction: ltr; }
+
+#game-hud-overlay .order-reward {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #2f6d16;
+}
+
+#game-hud-overlay .order-reward .rewards { display: flex; gap: 10px; direction: ltr; }
+
+#game-hud-overlay .order-actions {
+  display: flex;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+
+#game-hud-overlay .order-actions button {
+  border: 2px solid #fff;
+  border-radius: 10px;
+  padding: 5px 12px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  color: #fff;
+  cursor: pointer;
+  background: linear-gradient(180deg, #79d63c, #46961a);
+}
+
+#game-hud-overlay .order-actions .btn-reject {
+  background: linear-gradient(180deg, #e0715f, #a8342a);
+}
+
+#game-hud-overlay .order-actions button:disabled {
+  opacity: 0.45;
+  background: linear-gradient(180deg, #b9b1a6, #8d8578);
+}
+
+/* ------------------------------ السوق ------------------------------ */
+/* الأسماء هنا مطابقة لـ Components.marketListing */
+#game-hud-overlay .market-item {
+  display: grid;
+  grid-template-columns: 32px 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 2px solid #a3703c;
+  border-radius: 14px;
+  direction: rtl;
+}
+
+#game-hud-overlay .market-item .m-icon { font-size: 22px; }
+
+#game-hud-overlay .market-item .m-info { min-width: 0; }
+
+#game-hud-overlay .market-item .m-name {
+  font-size: 13px;
+  font-weight: 900;
+  color: #4a280c;
+}
+
+#game-hud-overlay .market-item .m-seller {
+  font-size: 10px;
+  font-weight: 700;
+  color: #6a3e1b;
+}
+
+#game-hud-overlay .market-item .m-unit-price {
+  font-size: 10px;
+  font-weight: 800;
+  color: #8a5520;
+}
+
+#game-hud-overlay .market-item .m-price {
+  font-size: 12px;
+  font-weight: 900;
+  color: #2f6d16;
+  direction: ltr;
+}
+
+#game-hud-overlay .market-item button {
+  border: 2px solid #fff;
+  border-radius: 10px;
+  padding: 5px 10px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  color: #fff;
+  cursor: pointer;
+  background: linear-gradient(180deg, #4aa3df, #1f6ea8);
+}
+
+#game-hud-overlay .market-item button:disabled { opacity: 0.45; }
+
+/* --------------------------- صفوف المخزن --------------------------- */
+/* Components.invItem */
+#game-hud-overlay .inv-item {
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  margin: 0;
+  background: rgba(255, 255, 255, 0.66);
+  border: 1.5px solid #a3703c;
+  border-radius: 12px;
+  color: #4a280c;
+  font-weight: 800;
+}
+
+#game-hud-overlay .inv-item .item-icon { font-size: 21px; }
+#game-hud-overlay .inv-item .item-name { font-size: 13px; font-weight: 900; }
+#game-hud-overlay .inv-item .item-count { font-size: 12px; color: #6a3e1b; direction: ltr; }
+
+.hud-market-sell {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1.5px dashed #a3703c;
+  border-radius: 12px;
+}
+
+.hud-market-sell input {
+  width: 74px;
+  padding: 6px;
+  border-radius: 10px;
+  border: 2px solid #a3703c;
+  background: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+  direction: ltr;
+}
+
+/* ------------------------------ الخريطة ------------------------------ */
+.hud-map {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  max-height: 46vh;
+  border-radius: 14px;
+  border: 2px solid #a3703c;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 60%),
+    linear-gradient(180deg, #86c95c 0%, #5fa63a 100%);
+  overflow: hidden;
+}
+
+.hud-map-marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 17px;
+  line-height: 1;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+.hud-map-marker.player { font-size: 21px; }
+.hud-map-marker.locked { opacity: 0.55; filter: grayscale(0.6); }
+
+.hud-map-label {
+  position: absolute;
+  transform: translate(-50%, 8px);
+  font-size: 9px;
+  font-weight: 900;
+  color: #33240f;
+  white-space: nowrap;
+}
+
+.hud-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: #5a2e0a;
+}
+
+/* ------------------------------ القائمة ------------------------------ */
+.hud-menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.66);
+  border: 1.5px solid #a3703c;
+  font-size: 13px;
+  font-weight: 800;
+  color: #4a280c;
+}
+
+.hud-menu-row .hud-switch {
+  border: 2px solid #fff4d2;
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  color: #fff;
+  cursor: pointer;
+  background: linear-gradient(180deg, #c48a3a, #8a5520);
+}
+
+.hud-menu-row .hud-switch.on { background: linear-gradient(180deg, #79d63c, #46961a); }
+
+.hud-menu-row .hud-danger { background: linear-gradient(180deg, #e0715f, #a8342a); }
+
+.hud-menu-note {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #6a3e1b;
 }
