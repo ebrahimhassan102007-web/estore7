@@ -100,7 +100,7 @@ class ProductionSystemService {
             return {
                 success: false,
                 error:
-                    `Need level ${recipe.unlockLevel}`
+                    `يتطلب المستوى ${recipe.unlockLevel}`
             };
         }
 

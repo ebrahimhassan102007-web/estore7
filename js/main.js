@@ -1567,7 +1567,7 @@ class MyFarmApp {
         const rigs = this.environment?.animals?.animals || [];
         if (rigs.length === 0) return;
 
-        const SPECIES = { pig: 'cow', sheep: 'sheep', cow: 'cow', chicken: 'chicken', rooster: 'chicken' };
+        const SPECIES = { pig: 'pig', sheep: 'sheep', cow: 'cow', chicken: 'chicken', rooster: 'chicken' };
         const animals = GameState.get('farm.animals') || [];
         let linked = 0;
 
@@ -1758,7 +1758,9 @@ class MyFarmApp {
             } else if (closestTarget.type === 'animal') {
                 const animal = AnimalSystem.getAnimalById(closestTarget.rig.farmAnimalId);
                 const ready = animal?.state === 'ready';
-                promptTitle.textContent = ready ? '🧺 منتج جاهز!' : `${closestTarget.rig.animalIcon || '🐄'} ${animal?.animalId || 'حيوان'}`;
+                // الاسم العربي من GameData — لا مفاتيح إنجليزية في الواجهة.
+                const speciesName = getAnimal(animal?.animalId)?.name || 'حيوان';
+                promptTitle.textContent = ready ? '🧺 منتج جاهز!' : `${closestTarget.rig.animalIcon || '🐄'} ${speciesName}`;
                 promptDesc.textContent = ready ? 'استلم المنتج من الحيوان' : `يحتاج طعامًا (${ITEMS[getAnimal(animal?.animalId)?.feed || 'wheat']?.name || 'قمح'})`;
                 promptBtn.textContent = ready ? 'جمع 🧺' : 'إطعام 🌾';
                 promptBtn.style.background = ready
