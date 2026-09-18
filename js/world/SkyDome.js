@@ -88,6 +88,9 @@ export class SkyDome {
             uExponent: { value: 0.85 }
         };
 
+        /* ── Procedural celestial shader (AAA production):
+           Smooth vertical hemisphere gradient (warm atmospheric horizon
+           blending into rich azure zenith) + sun glow halo ── */
         const material = new THREE.ShaderMaterial({
             uniforms: this.uniforms,
             side: THREE.BackSide,
@@ -95,9 +98,11 @@ export class SkyDome {
             fog: false,
             vertexShader: `
                 varying vec3 vWorldPosition;
+                varying vec3 vLocalPos;
                 void main() {
                     vec4 worldPosition = modelMatrix * vec4(position, 1.0);
                     vWorldPosition = worldPosition.xyz;
+                    vLocalPos = position;
                     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
                 }
             `,
@@ -110,6 +115,7 @@ export class SkyDome {
                 uniform float uOffset;
                 uniform float uExponent;
                 varying vec3 vWorldPosition;
+                varying vec3 vLocalPos;
 
                 void main() {
                     vec3 dir = normalize(vWorldPosition);
@@ -117,10 +123,18 @@ export class SkyDome {
                     float t = pow(clamp((h - uOffset) / (1.0 - uOffset), 0.0, 1.0), uExponent);
                     vec3 color = mix(uBottomColor, uTopColor, t);
 
-                    // وهج الشمس/الشفق حول اتجاه الشمس
+                    // Warm atmospheric horizon scatter (richer near horizon line)
+                    float horizonBand = exp(-abs(dir.y) * 5.0) * 0.12;
+                    color += vec3(1.0, 0.88, 0.65) * horizonBand;
+
+                    // Sun glow halo — exponential falloff from sun direction
                     float sunDot = max(dot(dir, normalize(uSunDirection)), 0.0);
                     float glow = pow(sunDot, 8.0) * 0.85 + pow(sunDot, 2.2) * 0.18;
                     color += uSunColor * glow * uSunIntensity;
+
+                    // Subtle zenith darkening for atmospheric depth
+                    float zenith = pow(max(dir.y, 0.0), 2.5) * 0.08;
+                    color *= (1.0 - zenith);
 
                     gl_FragColor = vec4(color, 1.0);
                 }
@@ -193,6 +207,60 @@ export class SkyDome {
             transparent: true, opacity: 0.92, fog: false
         });
 
+        /* ── Noise-based cloud shader (AAA production):
+           2D Simplex/Perlin noise vertex displacement with soft
+           alpha blending for volumetric procedural clouds ── */
+        const cloudVertexShader = `
+            varying vec2 vUv;
+            varying float vNoise;
+            uniform float uTime;
+            uniform float uSeed;
+
+            // Simplex-like hash for 2D noise
+            vec2 hash22(vec2 p) {
+                p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+                return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);
+            }
+
+            float noise2D(vec2 p) {
+                vec2 i = floor(p);
+                vec2 f = fract(p);
+                vec2 u = f * f * (3.0 - 2.0 * f);
+                return mix(
+                    mix(dot(hash22(i + vec2(0.0, 0.0)), f - vec2(0.0, 0.0)),
+                        dot(hash22(i + vec2(1.0, 0.0)), f - vec2(1.0, 0.0)), u.x),
+                    mix(dot(hash22(i + vec2(0.0, 1.0)), f - vec2(0.0, 1.0)),
+                        dot(hash22(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0)), u.x),
+                    u.y
+                );
+            }
+
+            void main() {
+                vUv = uv;
+                vec3 pos = position;
+                // Vertex displacement via 2D noise
+                float n = noise2D(pos.xz * 0.35 + uSeed + uTime * 0.08);
+                n += noise2D(pos.xz * 0.7 + uSeed * 2.0) * 0.5;
+                n *= 0.5;
+                pos.y += n * 0.6;
+                pos.x += n * 0.2;
+                vNoise = n;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+            }
+        `;
+
+        const cloudFragmentShader = `
+            varying vec2 vUv;
+            varying float vNoise;
+            void main() {
+                // Soft alpha blending — edges fade out
+                float edge = smoothstep(0.0, 0.35, vUv.x) * smoothstep(1.0, 0.65, vUv.x);
+                edge *= smoothstep(0.0, 0.3, vUv.y) * smoothstep(1.0, 0.7, vUv.y);
+                float alpha = 0.82 * edge + vNoise * 0.1;
+                gl_FragColor = vec4(1.0, 1.0, 1.0, clamp(alpha, 0.0, 0.95));
+            }
+        `;
+
         /*
          * MergeUtils يرفض دمج المواد الشفافة (تُرسم في ممر آخر)، لذلك
          * تُبنى النفخات بمادة معتمة مؤقتة، ثم يُدمج كل سحابة في mesh
@@ -228,6 +296,7 @@ export class SkyDome {
                 -70 - Math.random() * 70
             );
             cloud.userData.speed = 0.55 + Math.random() * 0.85;
+            cloud.userData.seed = Math.random() * 100;
 
             // كل غيمة ⇒ نداء رسم واحد (مادة شفافة مشتركة)
             const res = mergeGroupChildren(cloud, { name: 'Cloud' });

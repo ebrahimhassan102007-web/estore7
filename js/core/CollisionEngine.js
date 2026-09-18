@@ -299,6 +299,81 @@ export class CollisionEngine {
         }
         return hits;
     }
+
+    /**
+     * Raycast-based camera occlusion: returns the closest intersection
+     * parameter t ∈ [0,1] along the ray from origin toward target, or
+     * Infinity if nothing blocks. Used to smoothly lerp camera distance
+     * forward when walls/furniture obstruct the line of sight.
+     *
+     * @param {number} ox  Ray origin X
+     * @param {number} oy  Ray origin Y (camera height)
+     * @param {number} oz  Ray origin Z
+     * @param {number} tx  Ray target X (look-at / player)
+     * @param {number} ty  Ray target Y
+     * @param {number} tz  Ray target Z
+     * @param {number} [minY]  Minimum box Y to consider (skip low fences)
+     * @returns {number}  Closest hit parameter 0..1, or Infinity
+     */
+    raycastCameraOcclusion(ox, oy, oz, tx, ty, tz, minY = 0.5) {
+        let closestT = Infinity;
+        const dx = tx - ox;
+        const dy = ty - oy;
+        const dz = tz - oz;
+        const lenSq = dx * dx + dy * dy + dz * dz;
+        if (lenSq < 1e-6) return Infinity;
+
+        for (let i = 0; i < this.boxes.length; i++) {
+            const box = this.boxes[i];
+            if (!box.solid) continue;
+            if (box.tag === 'animal') continue;
+            if (box.maxY < minY) continue; // skip low obstacles
+
+            // Slab method for ray-AABB intersection
+            let tmin = 0;
+            let tmax = 1;
+
+            // X slab
+            if (Math.abs(dx) > 1e-8) {
+                let t1 = (box.minX - ox) / dx;
+                let t2 = (box.maxX - ox) / dx;
+                if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+                tmin = Math.max(tmin, t1);
+                tmax = Math.min(tmax, t2);
+                if (tmin > tmax) continue;
+            } else if (ox < box.minX || ox > box.maxX) {
+                continue;
+            }
+
+            // Z slab
+            if (Math.abs(dz) > 1e-8) {
+                let t1 = (box.minZ - oz) / dz;
+                let t2 = (box.maxZ - oz) / dz;
+                if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+                tmin = Math.max(tmin, t1);
+                tmax = Math.min(tmax, t2);
+                if (tmin > tmax) continue;
+            } else if (oz < box.minZ || oz > box.maxZ) {
+                continue;
+            }
+
+            // Y slab
+            if (Math.abs(dy) > 1e-8) {
+                let t1 = (box.minY - oy) / dy;
+                let t2 = (box.maxY - oy) / dy;
+                if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+                tmin = Math.max(tmin, t1);
+                tmax = Math.min(tmax, t2);
+                if (tmin > tmax) continue;
+            } else if (oy < box.minY || oy > box.maxY) {
+                continue;
+            }
+
+            if (tmin < closestT) closestT = tmin;
+        }
+
+        return closestT;
+    }
 }
 
 export default CollisionEngine;
