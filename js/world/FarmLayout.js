@@ -17,6 +17,12 @@
  * الممر الرئيسي (العمود الفقري) على x = 0 من الشمال إلى الجنوب.
  * ============================================================ */
 
+/** Locked wilderness: intentionally outside the cultivated core. */
+export const WILDERNESS_ZONES = Object.freeze([
+    { id: 'wilderness-northwest', x: -24, z: -25, radius: 6, unlockLevel: 4 },
+    { id: 'wilderness-southeast', x: 26, z: 23, radius: 7, unlockLevel: 8 }
+]);
+
 /** حدود اللعب الفعلية (السور المحيط + clamp اللاعب). */
 export const WORLD_BOUNDS = Object.freeze({
     minX: -30,
