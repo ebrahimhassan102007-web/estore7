@@ -8,7 +8,8 @@
     "test": "node tests/smoke.mjs",
     "test:logic": "node tests/smoke.mjs",
     "test:world": "node tests/world.mjs",
-    "test:all": "node tests/smoke.mjs && node tests/world.mjs"
+    "test:all": "node tests/smoke.mjs && node tests/world.mjs && node tests/contracts.mjs",
+    "test:contracts": "node tests/contracts.mjs"
   },
   "devDependencies": {
     "three": "0.160.0"
