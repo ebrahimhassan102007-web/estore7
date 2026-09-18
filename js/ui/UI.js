@@ -21,7 +21,10 @@ import { LandSystem, LAND_CONFIG } from '../systems/LandSystem.js';
 import { BuildingSystem } from '../systems/BuildingSystem.js';
 import { SaveManager } from '../core/SaveManager.js';
 import { GameState } from '../core/GameState.js';
-import { CROPS, ITEMS, ECONOMY } from '../data/GameData.js';
+import { BUILDINGS, CROPS, ITEMS, ECONOMY, FERTILIZERS, STORAGE_CONFIG } from '../data/GameData.js';
+import { StorageSystem } from '../systems/StorageSystem.js';
+import { FarmingSystem } from '../systems/FarmingSystem.js';
+import { AnimalSystem } from '../systems/AnimalSystem.js';
 import { formatNumber } from '../utils/Utils.js';
 
 /** الأنظمة ترجّع أخطاء إنجليزية في بعض المسارات — نترجمها للعرض فقط. */
@@ -40,22 +43,50 @@ const AR_ERRORS = {
 };
 
 const PANELS = {
-    shop: { title: '🏪 المتجر', tabs: ['seeds', 'land', 'buildings', 'orders', 'market'] },
+    shop: { title: '🏪 المتجر', tabs: ['seeds', 'fertilizer', 'animals', 'land', 'buildings', 'orders', 'market'] },
     bag: { title: '🎒 المخزن', tabs: ['bag'] },
+    // 🌾🧺 ترقية الصومعة/الحظيرة بمواد البناء (Brief §1 «Storage»)
+    storage: { title: '🌾🧺 المخازن', tabs: ['silo', 'barn'] },
     map: { title: '🗺️ خريطة المزرعة', tabs: ['map'] },
     menu: { title: '☰ القائمة', tabs: ['menu'] }
 };
 
 const TAB_LABELS = {
     seeds: 'البذور',
+    fertilizer: 'الأسمدة',
+    animals: 'الحيوانات',
     land: 'الأراضي',
     orders: 'الطلبات',
     market: 'السوق',
     buildings: 'المباني',
     bag: 'المخزن',
+    silo: 'الصومعة 🌾',
+    barn: 'الحظيرة 🧺',
     map: 'الخريطة',
     menu: 'الإعدادات'
 };
+
+/** وصف ماذا يخزّن كل مخزن — يمنع لبس اللاعب بين الصومعة والحظيرة. */
+const STORE_INFO = {
+    silo: {
+        icon: '🌾',
+        name: 'الصومعة (Silo)',
+        holds: 'المحاصيل الخام والبذور فقط: قمح، ذرة، جزر، صويا، قصب، بذور.',
+        blocks: 'إذا امتلأت يتوقف الحصاد — بِع محاصيل أو رقِّ السعة.'
+    },
+    barn: {
+        icon: '🧺',
+        name: 'الحظيرة (Barn)',
+        holds: 'منتجات الحيوانات والآلات والعدة ومواد البناء: بيض، حليب، خبز، مسامير، ألواح.',
+        blocks: 'إذا امتلأت لا يمكن استلام منتجات الآلات أو الحيوانات.'
+    }
+};
+
+/** أسعار الأسمدة من GameData (سعر البيع × معامل الشراء). */
+const FERTILIZER_BUY_MULT = 1.6;
+
+/** ترتيب مراتب السماد — يُستخدم لتمكين/تعطيل أزرار التطبيق. */
+const FERTILIZER_RANK = Object.freeze({ none: 0, basic: 1, quality: 2, deluxe: 3 });
 
 /**
  * سعر شراء البذرة مشتق من سعر بيع المحصول (40%) حتى لا نخترع
@@ -251,6 +282,10 @@ export class GameUI {
             case 'buildings': return this._renderBuildings(body);
             case 'orders': return this._renderOrders(body);
             case 'market': return this._renderMarket(body);
+            case 'fertilizer': return this._renderFertilizer(body);
+            case 'animals': return this._renderAnimals(body);
+            case 'silo': return this._renderStorage(body, 'silo');
+            case 'barn': return this._renderStorage(body, 'barn');
             case 'bag': return this._renderBag(body);
             case 'map': return this._renderMap(body);
             case 'menu': return this._renderMenu(body);
@@ -442,6 +477,76 @@ export class GameUI {
         hint.className = 'hud-menu-note';
         hint.textContent = 'افتح المبنى من العالم لبدء الإنتاج: قمح ← دقيق ← خبز 🍞';
         body.appendChild(hint);
+
+        this._renderMachineShop(body, buildings);
+    }
+
+    /**
+     * 🏭 شراء الآلات بالكوينز (Brief §1 «coins buy ... machines»).
+     * المبنى الجديد يُوضع تلقائيًا في صف الآلات بساحة الإنتاج
+     * (الموضع من FarmLayout عبر BuildingSystem.purchase).
+     */
+    _renderMachineShop(body, owned) {
+        const coins = GameState.get('player.coins') || 0;
+        const level = GameState.get('player.level') || 1;
+        const ownedTypes = new Set((owned || []).map((b) => b.typeId));
+
+        const heading = document.createElement('div');
+        heading.className = 'hud-sheet-sub';
+        heading.textContent = 'شراء آلة جديدة';
+        body.appendChild(heading);
+
+        const machines = Object.values(BUILDINGS).filter(
+            (b) => b.category === 'production' && !ownedTypes.has(b.id)
+        );
+
+        if (machines.length === 0) {
+            const done = document.createElement('div');
+            done.className = 'hud-sheet-empty';
+            done.textContent = 'تملك كل الآلات المتاحة 🎉';
+            body.appendChild(done);
+            return;
+        }
+
+        machines.forEach((def) => {
+            const cost = def.cost || { coins: 0, gems: 0 };
+            const locked = (def.unlockLevel || 1) > level;
+            const affordable = coins >= (cost.coins || 0) && GameState.get('player.gems') >= (cost.gems || 0);
+
+            const card = document.createElement('div');
+            card.className = `shop-item ${locked || !affordable ? 'locked' : ''}`;
+            card.innerHTML = `
+                <div class="shop-icon">${def.icon || '🏭'}</div>
+                <div>
+                    <div class="shop-name">${def.name || def.id}</div>
+                    <div class="shop-desc">
+                        ${def.description || ''}
+                        ${locked ? `<br>🔒 تتطلب المستوى ${def.unlockLevel}` : ''}
+                    </div>
+                    <div class="shop-cost">
+                        <span class="coin-cost">🪙 ${formatNumber(cost.coins || 0)}</span>
+                        ${cost.gems ? `<span class="gem-cost">💎 ${cost.gems}</span>` : ''}
+                    </div>
+                </div>
+                <div class="order-actions"></div>
+            `;
+
+            const actions = card.querySelector('.order-actions');
+            actions.appendChild(this._button('شراء', () => this.buyMachine(def.id), locked || !affordable));
+            body.appendChild(card);
+        });
+    }
+
+    buyMachine(buildingId) {
+        const res = BuildingSystem.purchase(buildingId);
+        if (!res.success) {
+            this._error(arError(res.error, 'تعذّر شراء المبنى'));
+            return;
+        }
+        const def = BUILDINGS[buildingId] || {};
+        this._success(`${def.icon || '🏭'} أُضيف ${def.name || buildingId} إلى ساحة الإنتاج`);
+        this.events?.emit?.('shop:purchased', { kind: 'building', buildingId });
+        this.render();
     }
 
     /* ------------------------------ الطلبات ------------------------------ */
@@ -614,6 +719,321 @@ export class GameUI {
         this.render();
     }
 
+    /* ------------------- 🐄 شراء الحيوانات بالعملات ------------------- */
+    _renderAnimals(body) {
+        const intro = document.createElement('div');
+        intro.className = 'hud-sheet-empty';
+        intro.textContent =
+            'اشترِ حيوانات بالكوينز — تُوضع تلقائيًا في حظيرتها، وتحتاج علفًا من مطحنة الأعلاف قبل أن تُنتج.';
+        body.appendChild(intro);
+
+        let catalog = [];
+        try {
+            catalog = AnimalSystem.getCatalog() || [];
+        } catch (e) {
+            body.innerHTML = '<div class="hud-sheet-empty">تعذّر قراءة قائمة الحيوانات</div>';
+            return;
+        }
+
+        const productNames = { egg: 'بيض', milk: 'حليب', wool: 'صوف', truffle: 'كمأة' };
+
+        catalog.forEach((entry) => {
+            const product = ITEMS[entry.product]?.name || productNames[entry.product] || entry.product;
+            const feed = ITEMS[entry.feedItem]?.name || entry.feedItem;
+            const locked = entry.levelLocked;
+
+            const card = document.createElement('div');
+            card.className = `shop-item ${locked || !entry.affordable ? 'locked' : ''}`;
+            card.innerHTML = `
+                <div class="shop-icon">${entry.icon}</div>
+                <div>
+                    <div class="shop-name">${entry.name} · ${entry.nameEn || ''}</div>
+                    <div class="shop-desc">
+                        تنتج ${product} · العلف: ${feed} · لديك ${entry.owned}
+                        ${locked ? `<br>🔒 تتطلب المستوى ${entry.unlockLevel}` : ''}
+                    </div>
+                    <div class="shop-cost"><span class="coin-cost">🪙 ${formatNumber(entry.costCoins)}</span></div>
+                </div>
+                <div class="order-actions"></div>
+            `;
+
+            const actions = card.querySelector('.order-actions');
+            actions.appendChild(
+                this._button('شراء', () => this.buyAnimal(entry.id), locked || !entry.affordable)
+            );
+            body.appendChild(card);
+        });
+    }
+
+    buyAnimal(species) {
+        const res = AnimalSystem.purchaseAnimal(species);
+        if (!res.success) {
+            this._error(arError(res.error || res.reason, 'تعذّر شراء الحيوان'));
+            return;
+        }
+        this._success(`${res.icon || '🐄'} اشتريت ${res.name} مقابل 🪙 ${formatNumber(res.coins || 0)}`);
+        this.events?.emit?.('shop:purchased', { kind: 'animal', species, coins: res.coins || 0 });
+        this.render();
+    }
+
+    /* --------------------- الأسمدة (مراتب جودة التربة) --------------------- */
+    _renderFertilizer(body) {
+        const coins = GameState.get('player.coins') || 0;
+
+        const intro = document.createElement('div');
+        intro.className = 'hud-sheet-empty';
+        intro.textContent =
+            'السماد يرفع فرصة الجودة: عادي ← فضي ← ذهبي ← بلاتيني (الديلوكس وحده يفتح البلاتيني). ' +
+            'يُضاف على تربة فارغة أو بادرة قبل الإنبات، ويبقى في التربة بعد الحصاد.';
+        body.appendChild(intro);
+
+        ['basic', 'quality', 'deluxe'].forEach((tierId) => {
+            const tier = FERTILIZERS[tierId];
+            if (!tier) return;
+            const item = ITEMS[tier.itemId] || {};
+            const price = Math.max(1, Math.round((item.sellPrice || 20) * FERTILIZER_BUY_MULT));
+            const owned = InventorySystem.count(tier.itemId);
+            const affordable = coins >= price;
+            const c = tier.chances;
+            const pct = (v) => `${Math.round((v || 0) * 100)}%`;
+
+            const card = document.createElement('div');
+            card.className = `shop-item ${affordable ? '' : 'locked'}`;
+            card.innerHTML = `
+                <div class="shop-icon">${tier.icon || '🧪'}</div>
+                <div>
+                    <div class="shop-name">${tier.name} · ${tier.nameEn}</div>
+                    <div class="shop-desc">
+                        عادي ${pct(c[0])} · فضي ${pct(c[1])} · ذهبي ${pct(c[2])} · بلاتيني ${pct(c[3])}
+                        <br>محصول إضافي +${Math.round((tier.yieldBonus || 0) * 100)}% · لديك ${owned}
+                    </div>
+                    <div class="shop-cost"><span class="coin-cost">🪙 ${formatNumber(price)}</span></div>
+                </div>
+                <div class="order-actions"></div>
+            `;
+
+            const actions = card.querySelector('.order-actions');
+            actions.appendChild(this._button('شراء', () => this.buyFertilizer(tierId, 1), !affordable));
+            actions.appendChild(
+                this._button(`×3 (${formatNumber(price * 3)})`, () => this.buyFertilizer(tierId, 3), coins < price * 3)
+            );
+            body.appendChild(card);
+        });
+
+        // خانات يمكن تسميدها الآن — حتى لا يشتري اللاعب سمادًا بلا مكان لاستعماله
+        const heading = document.createElement('div');
+        heading.className = 'hud-sheet-sub';
+        heading.textContent = 'خانات قابلة للتسميد الآن';
+        body.appendChild(heading);
+
+        const targets = this._fertilizableSlots(10);
+        if (targets.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'hud-sheet-empty';
+            empty.textContent = 'لا توجد خانة جاهزة للتسميد — ازرع أولًا أو جهّز أرضًا.';
+            body.appendChild(empty);
+            return;
+        }
+
+        targets.forEach((t) => {
+            const row = document.createElement('div');
+            row.className = 'hud-bag-row';
+
+            const stateLabel = t.slot.state === 'growing'
+                ? `🌱 بادرة ${Math.round((t.progress || 0) * 100)}%`
+                : '🟫 تربة فارغة';
+            const currentTier = FERTILIZERS[t.slot.fertilizer || 'none'] || FERTILIZERS.none;
+
+            row.innerHTML = `
+                <span class="hud-bag-icon">${currentTier.icon || '🟫'}</span>
+                <span class="hud-bag-name">${t.fieldLabel} · خانة ${t.slotIndex + 1}</span>
+                <span class="hud-bag-count">${stateLabel}</span>
+                <span class="hud-bag-price">${currentTier.name}</span>
+            `;
+
+            ['basic', 'quality', 'deluxe'].forEach((tierId) => {
+                const tier = FERTILIZERS[tierId];
+                const rank = FERTILIZER_RANK[tierId];
+                const ownedCount = InventorySystem.count(tier.itemId);
+                const usable = ownedCount > 0 && rank > FERTILIZER_RANK[t.slot.fertilizer || 'none'];
+                row.appendChild(this._button(
+                    `${tier.icon} ${ownedCount}`,
+                    () => this.applyFertilizer(t.fieldId, t.slotIndex, tierId),
+                    !usable
+                ));
+            });
+
+            body.appendChild(row);
+        });
+    }
+
+    /** مرتبة السماد في الواجهة (نفس ترتيب GameData). */
+    _fertilizableSlots(limit = 10) {
+        const out = [];
+        const fields = LandSystem.getAllFields() || [];
+
+        fields.forEach((field, idx) => {
+            if (!field.purchased || !field.prepared) return;
+            let slots = [];
+            try {
+                slots = FarmingSystem.getOrCreateSlots(field.id) || [];
+            } catch (e) {
+                return;
+            }
+
+            for (let i = 0; i < slots.length; i++) {
+                const slot = slots[i];
+                if (!slot || slot.state === 'ready' || slot.state === 'withered') continue;
+
+                let progress = 0;
+                if (slot.state === 'growing') {
+                    progress = FarmingSystem.growthProgress(slot)?.progress ?? 1;
+                    if (progress > 0.4) continue; // بعد الإنبات لا ينفع السماد
+                }
+                if (FERTILIZER_RANK[slot.fertilizer || 'none'] >= FERTILIZER_RANK.deluxe) continue;
+
+                out.push({
+                    fieldId: field.id,
+                    slotIndex: i,
+                    slot,
+                    progress,
+                    fieldLabel: field.name || `حقل ${idx + 1}`
+                });
+                if (out.length >= limit) return;
+            }
+        });
+
+        return out;
+    }
+
+    buyFertilizer(tierId, amount) {
+        const tier = FERTILIZERS[tierId];
+        if (!tier) return;
+        const item = ITEMS[tier.itemId] || {};
+        const price = Math.max(1, Math.round((item.sellPrice || 20) * FERTILIZER_BUY_MULT)) * amount;
+        const coins = GameState.get('player.coins') || 0;
+
+        if (coins < price) {
+            this._error(`لا تملك عملات كافية — تحتاج 🪙 ${formatNumber(price)}`);
+            return;
+        }
+
+        const gate = StorageSystem.checkAdd(tier.itemId, amount);
+        if (gate && gate.allowed < amount) {
+            this._error(gate.allowed <= 0
+                ? 'الحظيرة ممتلئة — بِع منتجات أو رقِّ السعة أولًا'
+                : `الحظيرة تتسع لـ ${gate.allowed} فقط`);
+            return;
+        }
+
+        GameState.set('player.coins', coins - price);
+        const added = InventorySystem.add(tier.itemId, amount);
+        if (!added.success) {
+            GameState.set('player.coins', (GameState.get('player.coins') || 0) + price);
+            this._error(arError(added.error, 'تعذّر شراء السماد'));
+            return;
+        }
+
+        this._success(`${tier.icon} اشتريت ${added.added} × ${tier.name} مقابل 🪙 ${formatNumber(price)}`);
+        this.events?.emit?.('shop:purchased', { itemId: tier.itemId, amount: added.added, coins: price });
+        this.render();
+    }
+
+    applyFertilizer(fieldId, slotIndex, tierId) {
+        const res = FarmingSystem.fertilizeSlot(fieldId, slotIndex, tierId);
+        if (!res.success) {
+            this._error(arError(res.error, 'تعذّر التسميد'));
+            return;
+        }
+        this._success(`${res.icon || '✨'} أُضيف ${res.name} — فرصة جودة أعلى عند الحصاد`);
+        this.render();
+    }
+
+    /* ------------------- المخازن: الصومعة 🌾 / الحظيرة 🧺 ------------------- */
+    _renderStorage(body, store) {
+        const info = STORE_INFO[store] || STORE_INFO.silo;
+        let snap;
+        try {
+            snap = StorageSystem.snapshot();
+        } catch (e) {
+            body.innerHTML = '<div class="hud-sheet-empty">تعذّر قراءة حالة المخازن</div>';
+            return;
+        }
+        const data = snap[store];
+        if (!data) return;
+
+        const pct = Math.round((data.fill || 0) * 100);
+
+        const card = document.createElement('div');
+        card.className = 'shop-item';
+        card.innerHTML = `
+            <div class="shop-icon">${info.icon}</div>
+            <div>
+                <div class="shop-name">${info.name} · مستوى ${data.level}</div>
+                <div class="shop-desc">${info.holds}<br>${info.blocks}</div>
+                <div class="storage-bar">
+                    <span class="storage-fill ${data.full ? 'is-full' : ''}" style="width:${pct}%"></span>
+                </div>
+                <div class="shop-desc">${data.used} / ${data.capacity} (${pct}%)</div>
+            </div>
+            <div class="order-actions"></div>
+        `;
+        body.appendChild(card);
+
+        // الترقية التالية بمواد البناء
+        const cost = StorageSystem.upgradeCost(store);
+        const actions = card.querySelector('.order-actions');
+
+        if (!cost) {
+            const max = document.createElement('div');
+            max.className = 'shop-desc';
+            max.textContent = `وصلت لأعلى مستوى (${STORAGE_CONFIG.maxLevel}) 🎉`;
+            actions.appendChild(max);
+            return;
+        }
+
+        const nextCapacity = StorageSystem.capacityForLevel(data.level + 1);
+        const costRow = document.createElement('div');
+        costRow.className = 'shop-desc';
+        costRow.innerHTML = '<strong>ترقية إلى مستوى ' + (data.level + 1) + '</strong> (سعة ' + nextCapacity + '):<br>' +
+            Object.entries(cost)
+                .filter(([, need]) => need > 0)
+                .map(([itemId, need]) => {
+                    const have = InventorySystem.count(itemId);
+                    const ok = have >= need;
+                    return `<span class="${ok ? 'supply-ok' : 'supply-missing'}">${ITEMS[itemId]?.icon || '📦'} ${ITEMS[itemId]?.name || itemId} ${have}/${need}</span>`;
+                })
+                .join(' · ');
+        actions.appendChild(costRow);
+
+        const canUpgrade = Object.entries(cost).every(([itemId, need]) => InventorySystem.count(itemId) >= need);
+        actions.appendChild(this._button('ترقية ⬆️', () => this.upgradeStorage(store), !canUpgrade));
+
+        const hint = document.createElement('div');
+        hint.className = 'hud-sheet-empty';
+        hint.textContent = 'مواد الترقية (مسامير/ألواح/شريط لاصق) تسقط من الحصاد وتسليم الطلبات وزوّار الكشك.';
+        body.appendChild(hint);
+    }
+
+    upgradeStorage(store) {
+        const res = StorageSystem.upgrade(store);
+        if (!res.success) {
+            if (res.reason === 'missing-supplies' && Array.isArray(res.missing)) {
+                const need = res.missing
+                    .map((m) => `${m.icon || '📦'} ${m.name} ${m.have}/${m.need}`)
+                    .join(' · ');
+                this._error(`مواد الترقية غير مكتملة: ${need}`);
+            } else {
+                this._error(arError(res.error, 'تعذّرت الترقية'));
+            }
+            return;
+        }
+
+        const info = STORE_INFO[store] || STORE_INFO.silo;
+        this._success(`⬆️ ${info.name} الآن مستوى ${res.level} — السعة ${res.capacity}`);
+        this.render();
+    }
+
     /* ------------------------------ المخزن ------------------------------ */
     _renderBag(body) {
         const rows = InventorySystem.list();
@@ -729,12 +1149,37 @@ export class GameUI {
         const sfx = GameState.get('settings.sfx') !== false;
 
         const stats = GameState.get('stats') || {};
+
+        /*
+         * التاريخ/الفصل من ساعة الجهاز الحقيقية (Brief §0.3) — لا
+         * «يوم 1» وهمي. الحقول يكتبها TimeManager كل دقيقة حقيقية.
+         */
+        const dateLabel = GameState.get('time.dateLabel') || '';
+        const seasonAr = GameState.get('time.seasonAr') || '';
+        const seasonEn = GameState.get('time.seasonEn') || '';
+        const clockLabel = GameState.get('time.clockLabel') || '';
+
         const note = document.createElement('div');
         note.className = 'hud-menu-note';
         note.textContent =
-            `مستوى ${GameState.get('player.level') || 1} · يوم ${GameState.get('time.day') || 1} · ` +
-            `حصاد ${stats.totalHarvests || 0} · مبيعات ${stats.totalSales || 0}`;
+            `مستوى ${GameState.get('player.level') || 1} · ` +
+            `${[clockLabel, dateLabel, seasonAr && `${seasonAr} ${seasonEn}`.trim()].filter(Boolean).join(' · ') || '—'} · ` +
+            `حصاد ${stats.totalHarvests || 0} · مبيعات ${formatNumber(stats.totalSales || 0)}`;
         body.appendChild(note);
+
+        // 🌾🧺 امتلاء المخازن + اختصار للترقية
+        try {
+            const snap = StorageSystem.snapshot();
+            const storeNote = document.createElement('div');
+            storeNote.className = 'hud-menu-note';
+            storeNote.textContent =
+                `🌾 الصومعة ${snap.silo.used}/${snap.silo.capacity} (م${snap.silo.level}) · ` +
+                `🧺 الحظيرة ${snap.barn.used}/${snap.barn.capacity} (م${snap.barn.level})`;
+            body.appendChild(storeNote);
+
+            const storageRow = this._menuRow('⬆️ ترقية المخازن', 'فتح', true, () => this.open('storage', 'silo'));
+            body.appendChild(storageRow);
+        } catch (e) { /* المخازن اختيارية في القائمة */ }
 
         const soundRow = this._menuRow('🔊 المؤثرات الصوتية', sfx ? 'مفعّلة' : 'متوقفة', sfx, () => {
             GameState.set('settings.sfx', !sfx);

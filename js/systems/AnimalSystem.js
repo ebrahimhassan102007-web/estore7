@@ -13,6 +13,8 @@
 
 import { Events } from '../core/EventBus.js';
 import { GameState } from '../core/GameState.js';
+import { InventorySystem } from './InventorySystem.js';
+import { StorageSystem } from './StorageSystem.js';
 import {
     ANIMALS,
     ITEMS,
@@ -276,30 +278,29 @@ class AnimalSystemService {
             animalData.feed ||
             'wheat';
 
-        const items = GameState.get(
-            'inventory.items'
-        );
-
-        if (
-            !items[feedId] ||
-            items[feedId].count < 1
-        ) {
+        /*
+         * العلف يُستهلك عبر InventorySystem (لا كتابة يدوية في
+         * inventory.items) حتى تبقى مراتب الجودة وسعة المخزن متسقة.
+         */
+        if (InventorySystem.count(feedId) < 1) {
             return {
                 success: false,
-                error: `ينقصك ${ITEMS[feedId]?.name || feedId} للإطعام`
+                error: `ينقصك ${ITEMS[feedId]?.name || feedId} للإطعام`,
+                reason: 'no-feed',
+                feedId
             };
         }
 
-        items[feedId].count--;
+        const removed = InventorySystem.remove(feedId, 1);
 
-        if (items[feedId].count <= 0) {
-            delete items[feedId];
+        if (!removed.success) {
+            return {
+                success: false,
+                error: removed.error || `ينقصك ${ITEMS[feedId]?.name || feedId} للإطعام`,
+                reason: 'no-feed',
+                feedId
+            };
         }
-
-        GameState.set(
-            'inventory.items',
-            { ...items }
-        );
 
         animal.hunger = 100;
         animal.state = 'fed';
@@ -387,55 +388,39 @@ class AnimalSystemService {
         const productAmount =
             animalData.productAmount || 1;
 
-        const inventory =
-            GameState.get('inventory');
+        /*
+         * بوابة المخزن (Hay Day halt — Brief §1):
+         * منتجات الحيوانات تُخزَّن في Barn؛ إن كان ممتلئًا لا يُجمع
+         * المنتج ويبقى على الحيوان حتى يُفرغ اللاعب مكانًا.
+         */
+        const gate = StorageSystem.checkAdd(productId, productAmount);
 
-        const current =
-            Object.values(
-                inventory.items
-            ).reduce(
-                (sum, item) =>
-                    sum + item.count,
-                0
-            );
-
-        if (
-            current + productAmount >
-            inventory.maxCapacity
-        ) {
-            Events.emit(
-                'inventory:full'
-            );
+        if (gate.allowed <= 0) {
+            StorageSystem.reportFull(gate.store);
 
             return {
                 success: false,
-                error: 'المخزن ممتلئ'
+                error: StorageSystem.fullMessage(gate.store),
+                reason: `${gate.store}_full`
             };
         }
 
-        const items =
-            GameState.get(
-                'inventory.items'
-            );
-
-        if (!items[productId]) {
-            items[productId] = {
-                count: 0,
-                quality: 1
-            };
-        }
-
-        items[productId].count +=
-            productAmount;
-
-        GameState.set(
-            'inventory.items',
-            { ...items }
+        const added = InventorySystem.add(
+            productId,
+            gate.allowed,
+            'normal'
         );
+
+        if (!added.success) {
+            return {
+                success: false,
+                error: added.error || 'barn_full'
+            };
+        }
 
         animal.totalCollected =
             (animal.totalCollected || 0) +
-            productAmount;
+            added.added;
 
         animal.state = 'hungry';
         animal.hunger = 50;
@@ -451,13 +436,13 @@ class AnimalSystemService {
             'animal:collected',
             animal.id,
             productId,
-            productAmount
+            added.added
         );
 
         return {
             success: true,
             productId,
-            amount: productAmount
+            amount: added.added
         };
     }
 
@@ -653,6 +638,93 @@ class AnimalSystemService {
             animal =>
                 animal.hunger < 30
         );
+    }
+
+    /* =========================================================
+       PURCHASE — شراء حيوان بالعملات (Brief §1 «coins buy animals»)
+       ---------------------------------------------------------
+       adopt() وحده كان يكفي للربط البصري، لكن الاقتصاد يحتاج
+       شراءً حقيقيًا: سعر من GameData + بوابة مستوى + حد القطيع،
+       مع إرجاع العملات عند أي فشل (لا أموال ضائعة).
+       ========================================================= */
+    purchaseAnimal(species, position = null) {
+        const def = getAnimal(species);
+        if (!def) {
+            return { success: false, reason: 'unknown_species', error: 'نوع حيوان غير معروف' };
+        }
+
+        const level = GameState.get('player.level') || 1;
+        if (def.unlockLevel && def.unlockLevel > level) {
+            return {
+                success: false,
+                reason: 'level_locked',
+                error: `${def.icon || '🐄'} ${def.name} يتطلب المستوى ${def.unlockLevel}`
+            };
+        }
+
+        const animals = GameState.get('farm.animals') || [];
+        const capacity = this.getCapacity();
+        if (animals.length >= capacity) {
+            return { success: false, reason: 'limit_reached', error: `لا مكان في الحظائر (${capacity} كحد أقصى)` };
+        }
+
+        const cost = def.cost || { coins: 0, gems: 0 };
+        const coins = GameState.get('player.coins') || 0;
+        const gems = GameState.get('player.gems') || 0;
+
+        if ((cost.coins || 0) > coins) {
+            return { success: false, reason: 'insufficient_coins', error: `تحتاج 💰 ${cost.coins} لشراء ${def.name}` };
+        }
+        if ((cost.gems || 0) > gems) {
+            return { success: false, reason: 'insufficient_gems', error: `تحتاج 💎 ${cost.gems} لشراء ${def.name}` };
+        }
+
+        if (cost.coins) GameState.set('player.coins', coins - cost.coins);
+        if (cost.gems) GameState.set('player.gems', gems - cost.gems);
+
+        const res = this.adopt(species, position);
+        if (!res.success) {
+            // إرجاع كامل عند الفشل
+            if (cost.coins) GameState.set('player.coins', (GameState.get('player.coins') || 0) + cost.coins);
+            if (cost.gems) GameState.set('player.gems', (GameState.get('player.gems') || 0) + cost.gems);
+            return { success: false, reason: res.reason || 'adopt_failed', error: res.error || 'تعذّر إضافة الحيوان' };
+        }
+
+        const payload = {
+            animal: res.animal,
+            species,
+            name: def.name,
+            icon: def.icon,
+            coins: cost.coins || 0,
+            gems: cost.gems || 0
+        };
+        Events.emit('animal:purchased', payload);
+        return { success: true, ...payload };
+    }
+
+    /** أنواع الحيوانات المتاحة للشراء مع حالتها الحالية (للواجهة). */
+    getCatalog() {
+        const owned = {};
+        for (const a of (GameState.get('farm.animals') || [])) {
+            owned[a.animalId] = (owned[a.animalId] || 0) + 1;
+        }
+        const level = GameState.get('player.level') || 1;
+        const coins = GameState.get('player.coins') || 0;
+
+        return Object.values(ANIMALS).map((def) => ({
+            id: def.id,
+            name: def.name,
+            nameEn: def.nameEn,
+            icon: def.icon,
+            product: def.product,
+            feedItem: def.feedItem || def.feed,
+            costCoins: def.cost?.coins || 0,
+            costGems: def.cost?.gems || 0,
+            unlockLevel: def.unlockLevel || 1,
+            owned: owned[def.id] || 0,
+            levelLocked: (def.unlockLevel || 1) > level,
+            affordable: coins >= (def.cost?.coins || 0)
+        }));
     }
 
     getCount() {

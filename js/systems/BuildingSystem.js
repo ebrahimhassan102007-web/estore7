@@ -9,8 +9,12 @@ import { GameState } from '../core/GameState.js';
 import {
     BUILDINGS,
     EXPANSIONS,
+    STARTER_KIT,
     getBuilding
 } from '../data/GameData.js';
+
+// مصدر المواضع الوحيد — صف الآلات في ساحة الإنتاج (Brief §1 «Layout zones»).
+import { PRODUCTION_COURT } from '../world/FarmLayout.js';
 
 import { uuid } from '../utils/Utils.js';
 
@@ -157,6 +161,15 @@ class BuildingSystemService {
         // Create building
         // -----------------------------------------------------
 
+        /*
+         * الموضع الافتراضي من FarmLayout (صف الآلات في ساحة الإنتاج)
+         * بدل (0, 4.5) الذي كان يسقط المبنى الجديد فوق الممر الرئيسي.
+         */
+        const layoutPos =
+            PRODUCTION_COURT.machines?.[buildingId] ||
+            STARTER_KIT.positions?.[buildingId] ||
+            null;
+
         const building = {
 
             id:
@@ -175,7 +188,7 @@ class BuildingSystemService {
                 tileId,
 
             position:
-                null,
+                layoutPos ? { ...layoutPos } : null,
 
             productionQueue:
                 [],

@@ -20,6 +20,7 @@
  * ============================================================
  */
 import { InventorySystem } from '../systems/InventorySystem.js';
+import { StorageSystem } from '../systems/StorageSystem.js';
 
 const SEASONS_AR = {
   spring: 'الربيع',
@@ -28,17 +29,32 @@ const SEASONS_AR = {
   winter: 'الشتاء'
 };
 
+const SEASONS_EN = {
+  spring: 'Spring',
+  summer: 'Summer',
+  autumn: 'Autumn',
+  winter: 'Winter'
+};
+
+const SEASON_ICONS = {
+  spring: '🌸',
+  summer: '☀️',
+  autumn: '🍂',
+  winter: '❄️'
+};
+
 /** ترتيب شريط الأدوات كما في الموك: أدوات ← بذور ← حقيبة. */
 const HOTBAR_LAYOUT = [
   { id: 'axe',           name: 'فأس',          icon: '🪓', type: 'tool' },
   { id: 'watering_can',  name: 'إبريق الري',   icon: '💧', type: 'tool' },
   { id: 'hoe',           name: 'مِحراث',       icon: '⛏️', type: 'tool' },
   { id: 'pickaxe',       name: 'معول',         icon: '⚒️', type: 'tool' },
-  { id: 'wheat_seed',    name: 'بذور القمح',   icon: '🌾', type: 'seed', cropType: 'wheat',  count: 0 },
-  { id: 'corn_seed',     name: 'بذور الذرة',   icon: '🌽', type: 'seed', cropType: 'corn',   count: 0 },
-  { id: 'carrot_seed',   name: 'بذور الجزر',   icon: '🥕', type: 'seed', cropType: 'carrot', count: 0 },
-  { id: 'tomato_seed',   name: 'بذور الطماطم', icon: '🍅', type: 'seed', cropType: 'tomato', count: 0 },
-  { id: 'bag',           name: 'المخزن',       icon: '🎒', type: 'panel', panel: 'bag' }
+  { id: 'wheat_seed',    name: 'بذور القمح',      icon: '🌾', type: 'seed', cropType: 'wheat',     count: 0 },
+  { id: 'corn_seed',     name: 'بذور الذرة',      icon: '🌽', type: 'seed', cropType: 'corn',      count: 0 },
+  { id: 'carrot_seed',   name: 'بذور الجزر',      icon: '🥕', type: 'seed', cropType: 'carrot',    count: 0 },
+  { id: 'soybean_seed',  name: 'بذور فول الصويا', icon: '🫛', type: 'seed', cropType: 'soybean',   count: 0 },
+  { id: 'sugarcane_seed', name: 'بذور قصب السكر', icon: '🎋', type: 'seed', cropType: 'sugarcane', count: 0 },
+  { id: 'bag',           name: 'المخزن',          icon: '🎒', type: 'panel', panel: 'bag' }
 ];
 
 export class HUD {
@@ -105,17 +121,37 @@ export class HUD {
           </div>
         </div>
 
-        <!-- العملات (وسط) -->
-        <div class="hud-currencies">
-          <div class="hud-currency-item coins">
-            <span class="icon" aria-hidden="true">💰</span>
-            <span id="mf-coins">0</span>
-            <button type="button" class="hud-plus" id="hud-btn-add-coins" aria-label="شراء عملات">+</button>
+        <!-- الوسط: العملات + امتلاء الصومعة/الحظيرة -->
+        <div class="hud-center-col">
+          <div class="hud-currencies">
+            <div class="hud-currency-item coins">
+              <span class="icon" aria-hidden="true">💰</span>
+              <span id="mf-coins">0</span>
+              <button type="button" class="hud-plus" id="hud-btn-add-coins" aria-label="شراء عملات">+</button>
+            </div>
+            <div class="hud-currency-item gems">
+              <span class="icon" aria-hidden="true">💎</span>
+              <span id="mf-gems">0</span>
+              <button type="button" class="hud-plus" id="hud-btn-add-gems" aria-label="شراء جواهر">+</button>
+            </div>
           </div>
-          <div class="hud-currency-item gems">
-            <span class="icon" aria-hidden="true">💎</span>
-            <span id="mf-gems">0</span>
-            <button type="button" class="hud-plus" id="hud-btn-add-gems" aria-label="شراء جواهر">+</button>
+
+          <!-- 🌾 الصومعة (محاصيل خام) · 🧺 الحظيرة (منتجات/عدة) -->
+          <div class="hud-storage-row" id="hud-storage-row" aria-label="امتلاء المخازن">
+            <button type="button" class="hud-storage-pill silo" id="hud-btn-silo" aria-label="الصومعة">
+              <span class="st-icon" aria-hidden="true">🌾</span>
+              <span class="st-body">
+                <span class="st-track"><span class="st-fill" id="mf-silo-fill"></span></span>
+                <span class="st-text" id="mf-silo-text">0 / 150</span>
+              </span>
+            </button>
+            <button type="button" class="hud-storage-pill barn" id="hud-btn-barn" aria-label="الحظيرة">
+              <span class="st-icon" aria-hidden="true">🧺</span>
+              <span class="st-body">
+                <span class="st-track"><span class="st-fill" id="mf-barn-fill"></span></span>
+                <span class="st-text" id="mf-barn-text">0 / 150</span>
+              </span>
+            </button>
           </div>
         </div>
 
@@ -126,10 +162,11 @@ export class HUD {
             <span id="mf-clock">08:00 ص</span>
           </span>
           <span class="season">
+            <span id="mf-season-icon" aria-hidden="true">🌸</span>
             <span id="mf-season">الربيع</span>
-            <span class="dot" aria-hidden="true">·</span>
-            <span id="mf-day">يوم 1</span>
+            <span class="season-en" id="mf-season-en">Spring</span>
           </span>
+          <span class="date" id="mf-date">الجمعة 18 سبتمبر 2026</span>
         </div>
       </header>
 
@@ -180,6 +217,10 @@ export class HUD {
       this.eventBus.on('time:day', () => this.pullClock());
       this.eventBus.on('game:tick', () => this.pullClock());
       this.eventBus.on('inventory:changed', () => this.syncSeedCounts());
+      this.eventBus.on('storage:changed', () => this.syncStorage());
+      this.eventBus.on('storage:upgraded', () => this.syncStorage());
+      this.eventBus.on('storage:full', () => this.syncStorage());
+      this.eventBus.on('time:season', () => this.pullClock());
       // أي تغيير في المخزن يحدّث عدّادات البذور
       this.eventBus.on('state:changed', (path) => {
         if (path === 'inventory.items' || path === 'inventory') this.syncSeedCounts();
@@ -204,6 +245,9 @@ export class HUD {
     on('#hud-btn-map', () => this.openPanel('map'));
     on('#hud-btn-add-coins', () => this.openPanel('shop', 'coins'));
     on('#hud-btn-add-gems', () => this.openPanel('shop', 'gems'));
+    // 🌾🧺 النقر على شريط الامتلاء يفتح لوحة ترقية المخزن
+    on('#hud-btn-silo', () => this.openPanel('storage', 'silo'));
+    on('#hud-btn-barn', () => this.openPanel('storage', 'barn'));
 
     on('#hud-btn-interact', () => {
       if (typeof this.callbacks.onInteract === 'function') this.callbacks.onInteract();
@@ -256,6 +300,13 @@ export class HUD {
       case 'player.xpToNext':
         this.updateXP(this.getState('player.xp', 0), value);
         break;
+      case 'inventory.items':
+      case 'inventory.maxCapacity':
+      case 'storage.silo':
+      case 'storage.barn':
+        // أي تغيير في المخزون ينعكس فورًا على أشرطة الصومعة/الحظيرة
+        this.syncStorage();
+        break;
       default:
         break;
     }
@@ -268,6 +319,7 @@ export class HUD {
     this.updateXP(this.getState('player.xp', 0), this.getState('player.xpToNext', 100));
     this.renderMissions();
     this.syncSeedCounts();
+    this.syncStorage();
     this.pullClock();
   }
 
@@ -404,37 +456,109 @@ export class HUD {
   /* ==========================================================
      🕐 الساعة — تُكتب من TimeManager عبر main.js
      ========================================================== */
+  /**
+   * واجهة قديمة (توافق مع أي مستدعٍ سابق) — تُمرَّر الآن إلى applyClock.
+   */
   updateClock(label, icon = '☀️', day = 1, season = 'spring') {
     const clockEl = this.container?.querySelector('#mf-clock');
     const phaseEl = this.container?.querySelector('#mf-phase');
     const seasonEl = this.container?.querySelector('#mf-season');
-    const dayEl = this.container?.querySelector('#mf-day');
 
     if (clockEl && label) clockEl.textContent = label;
     if (phaseEl) phaseEl.textContent = icon || '☀️';
     if (seasonEl) seasonEl.textContent = SEASONS_AR[season] || season;
-    if (dayEl) dayEl.textContent = `يوم ${day}`;
   }
 
-  /** قراءة الساعة من الحالة (بدون import لـ TimeManager). */
-  pullClock() {
-    const cycle = this.getState('time.dayCycle', 0) || 0;
-    const totalMinutes = Math.floor(cycle * 24 * 60);
-    const hours = Math.floor(totalMinutes / 60) % 24;
-    const minutes = totalMinutes % 60;
-    const suffix = hours < 12 ? 'ص' : 'م';
-    const h12 = ((hours + 11) % 12) + 1;
-    const icon = hours >= 5 && hours < 8 ? '🌅'
-      : hours >= 8 && hours < 17 ? '☀️'
-        : hours >= 17 && hours < 20 ? '🌇'
-          : '🌙';
+  /**
+   * 🕐 الساعة الحقيقية للـ HUD (Brief §0.3):
+   * وقت الجهاز + التاريخ التقويمي + الفصل الفلكي ثنائي اللغة.
+   * @param {object} clock لقطة Calendar.readRealClock()
+   */
+  applyClock(clock) {
+    if (!clock || !this.container) return;
 
-    this.updateClock(
-      `${String(h12).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${suffix}`,
-      icon,
-      this.getState('time.day', 1) || 1,
-      this.getState('time.season', 'spring')
-    );
+    const q = (sel) => this.container.querySelector(sel);
+    const clockEl = q('#mf-clock');
+    const phaseEl = q('#mf-phase');
+    const seasonEl = q('#mf-season');
+    const seasonEnEl = q('#mf-season-en');
+    const seasonIconEl = q('#mf-season-icon');
+    const dateEl = q('#mf-date');
+
+    if (clockEl && clock.clockLabel) clockEl.textContent = clock.clockLabel;
+    if (phaseEl) phaseEl.textContent = clock.phaseIcon || '☀️';
+
+    const season = clock.season || this.getState('time.season', 'summer');
+    if (seasonEl) seasonEl.textContent = clock.seasonAr || SEASONS_AR[season] || season;
+    if (seasonEnEl) seasonEnEl.textContent = clock.seasonEn || SEASONS_EN[season] || '';
+    if (seasonIconEl) seasonIconEl.textContent = clock.seasonIcon || SEASON_ICONS[season] || '🌿';
+    if (dateEl) dateEl.textContent = clock.dateLabel || this.getState('time.dateLabel', '') || '';
+  }
+
+  /**
+   * قراءة الساعة من الحالة (TimeManager يكتبها كل دقيقة حقيقية).
+   * لا حسابات افتراضية: إن غابت الحقول نبني ملصقًا من ساعات/دقائق حقيقية.
+   */
+  pullClock() {
+    const hours = Number(this.getState('time.hours', -1));
+    const minutes = Number(this.getState('time.minutes', -1));
+    const season = this.getState('time.season', 'summer');
+
+    // ملصق 12-ساعي بصيغة عربية مطابقة لـ Calendar.formatClockLabel
+    let label = this.getState('time.clockLabel', '');
+    if (!label && Number.isFinite(hours) && hours >= 0) {
+      const suffix = hours < 12 ? 'ص' : 'م';
+      const h12 = ((hours + 11) % 12) + 1;
+      label = `${String(h12).padStart(2, '0')}:${String(Math.max(0, minutes) || 0).padStart(2, '0')} ${suffix}`;
+    }
+
+    this.applyClock({
+      clockLabel: label,
+      phaseIcon: this.getState('time.phaseIcon', this._phaseIconFromHours(hours)),
+      season,
+      seasonAr: this.getState('time.seasonAr', SEASONS_AR[season]),
+      seasonEn: this.getState('time.seasonEn', SEASONS_EN[season]),
+      seasonIcon: SEASON_ICONS[season],
+      dateLabel: this.getState('time.dateLabel', '')
+    });
+  }
+
+  _phaseIconFromHours(hours) {
+    if (!Number.isFinite(hours) || hours < 0) return '☀️';
+    if (hours >= 5 && hours < 8) return '🌅';
+    if (hours >= 8 && hours < 17) return '☀️';
+    if (hours >= 17 && hours < 20) return '🌇';
+    return '🌙';
+  }
+
+  /* ==========================================================
+     🌾🧺 امتلاء الصومعة/الحظيرة — يظهر الامتلاء قبل أن يمنع اللعب
+     ========================================================== */
+  syncStorage() {
+    if (!this.container) return;
+    let snap;
+    try {
+      snap = StorageSystem.snapshot();
+    } catch (e) {
+      return;
+    }
+
+    for (const store of ['silo', 'barn']) {
+      const data = snap[store];
+      if (!data) continue;
+      const fill = this.container.querySelector(`#mf-${store}-fill`);
+      const text = this.container.querySelector(`#mf-${store}-text`);
+      const pill = this.container.querySelector(`#hud-btn-${store}`);
+      const pct = Math.max(0, Math.min(100, Math.round((data.fill || 0) * 100)));
+
+      if (fill) fill.style.width = `${pct}%`;
+      if (text) text.textContent = `${data.used} / ${data.capacity}`;
+      if (pill) {
+        pill.classList.toggle('is-full', !!data.full);
+        pill.classList.toggle('is-tight', !data.full && pct >= 80);
+        pill.title = `${data.labelAr} · مستوى ${data.level} · ${data.used}/${data.capacity}`;
+      }
+    }
   }
 
   /* ==========================================================

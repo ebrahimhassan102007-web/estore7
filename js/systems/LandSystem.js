@@ -7,32 +7,22 @@
 import { Events } from '../core/EventBus.js';
 import { GameState } from '../core/GameState.js';
 import { SaveManager } from '../core/SaveManager.js';
+import { StorageSystem } from './StorageSystem.js';
+import { FIELD_PLOTS, FIELD_ZONE } from '../world/FarmLayout.js';
 
 export const LAND_CONFIG = Object.freeze({
     fieldPrice: 100,
     hitsRequired: 4, // 4 ضربات فأس لتجهيز الأرض بالكامل
     baseUnlocked: ['field_center_left', 'field_center_right'],
-    
-    // منطقة الحقول المخصصة شرق المزرعة (3 أعمدة × 4 صفوف)، بعيدًا عن
-    // البيت/الحظيرة/الطاحونة/السوق. الممرات تصلها (انظر Environment).
-    // المعرّفات القديمة محفوظة عمدًا حتى لا تنكسر الحفوظات والخانات.
-    fieldsLayout: [
-        // الحقول الأساسية المجانية (أول صف في منطقة الحقول)
-        { id: 'field_center_left',  x: 10.5, z: 2.0, base: true },
-        { id: 'field_center_right', x: 16.5, z: 2.0, base: true },
 
-        // الـ 10 أراضٍ المقفولة داخل منطقة الحقول فقط
-        { id: 'land_north_1',  x: 22.5, z: 2.0 },
-        { id: 'land_north_2',  x: 10.5, z: 8.2 },
-        { id: 'land_north_3',  x: 16.5, z: 8.2 },
-        { id: 'land_west_1',   x: 22.5, z: 8.2 },
-        { id: 'land_west_2',   x: 10.5, z: 14.4 },
-        { id: 'land_east_1',   x: 16.5, z: 14.4 },
-        { id: 'land_east_2',   x: 22.5, z: 14.4 },
-        { id: 'land_south_1',  x: 10.5, z: 20.6 },
-        { id: 'land_south_2',  x: 16.5, z: 20.6 },
-        { id: 'land_south_3',  x: 22.5, z: 20.6 }
-    ]
+    /*
+     * منطقة الحقول المخصصة (3 أعمدة × 4 صفوف) شرق/جنوب-شرق المزرعة،
+     * بعيدًا عن البيت والحظائر والطاحونة والكشك — انظر FarmLayout.js
+     * (مصدر واحد للإحداثيات لكل الأنظمة).
+     * المعرّفات مثبّتة عمدًا: الحفوظات القديمة تربط الخانات والمحاصيل بها.
+     */
+    fieldsLayout: FIELD_PLOTS,
+    zone: FIELD_ZONE
 });
 
 class LandSystemService {
@@ -204,7 +194,12 @@ class LandSystemService {
         });
 
         if (isFinished) {
-            Events.emit('land:prepared', { field });
+            /*
+             * توسعة بأسلوب Hay Day: تجهيز أرض جديدة يُسقط مواد ترقية
+             * (مسامير/ألواح/شريط) لتوسيع الصوامع/المخزن.
+             */
+            const supplyDrop = StorageSystem.rollSupplyDrop('order');
+            Events.emit('land:prepared', { field, supplyDrop });
         }
 
         return { success: true, progress: field.prepProgress, isFinished };
