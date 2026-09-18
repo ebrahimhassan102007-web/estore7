@@ -6,6 +6,7 @@
 
 import * as THREE from 'three';
 import { InteractiveDoor } from './Doors.js';
+import { mergeGroupChildren } from './MergeUtils.js';
 
 const mat = (color, roughness = 0.85, metalness = 0) =>
     new THREE.MeshStandardMaterial({ color, roughness, metalness });
@@ -98,6 +99,8 @@ export class BuildingManager {
         this.doors.push(door);
 
         this.group.add(g);
+        // الدمج لا يلمس الـ pivot (Group) فالباب يبقى متحركًا
+        mergeGroupChildren(g, { name: 'Farmhouse-body' });
     }
 
     barn() {
@@ -170,6 +173,7 @@ export class BuildingManager {
         }
 
         this.group.add(g);
+        mergeGroupChildren(g, { name: 'Barn-body' });
         this._barnDoors = { left, right, collider: doorCollider };
     }
 
@@ -214,6 +218,7 @@ export class BuildingManager {
         }
 
         this.group.add(g);
+        mergeGroupChildren(g, { name: 'Silo-body' });
     }
 
     windmill() {
@@ -237,6 +242,7 @@ export class BuildingManager {
         }
         g.add(rotor);
         this.rotors.push(rotor);
+        mergeGroupChildren(rotor, { name: 'Windmill-blades' });
 
         if (this.collision) {
             this.collision.addBox({
@@ -251,6 +257,7 @@ export class BuildingManager {
         }
 
         this.group.add(g);
+        mergeGroupChildren(g, { name: 'Windmill-tower' });
     }
 
     market() {
@@ -293,6 +300,7 @@ export class BuildingManager {
         }
 
         this.group.add(g);
+        mergeGroupChildren(g, { name: 'Market-body' });
     }
 
     fences() {
@@ -330,6 +338,12 @@ export class BuildingManager {
                 });
             }
         }
+
+        /*
+         * ~100 صندوق سياج = ~100 نداء رسم. كلها أبناء مباشرون لـ this.group
+         * وبنفس المادة، فتُدمج في mesh واحد (المباني مجموعات Groups فلا تُمس).
+         */
+        mergeGroupChildren(this.group, { name: 'Fences' });
     }
 
     sign() {
@@ -353,6 +367,7 @@ export class BuildingManager {
         sprite.scale.set(4.7, 1, 1);
         g.add(sprite);
         this.group.add(g);
+        mergeGroupChildren(g, { name: 'Sign-body' });
 
         if (this.collision) {
             this.collision.addBox({

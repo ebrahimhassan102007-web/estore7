@@ -8,6 +8,7 @@
  */
 
 import * as THREE from 'three';
+import { mergeDeep } from './MergeUtils.js';
 
 const M = (color, extra = {}) =>
     new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...extra });
@@ -41,6 +42,15 @@ class AnimalRig {
 
         this.parts = { legs: [], extras: [] };
         this.build(type);
+
+        /*
+         * الأجزاء المتحركة (أذنان/جناحان) تُعلَّم noMerge، ثم تُدمج بقية
+         * الأجزاء الساكنة داخل كل مجموعة: نفس الشكل بعدد نداءات أقل بكثير.
+         */
+        for (const mesh of [...(this.parts.ears || []), ...(this.parts.wings || [])]) {
+            if (mesh) mesh.userData.noMerge = true;
+        }
+        mergeDeep(this.root, { name: type });
 
         this.collider = null;
         if (collision) {

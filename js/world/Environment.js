@@ -9,6 +9,7 @@ import { FoliageManager } from './FoliageManager.js';
 import { BuildingManager } from './BuildingManager.js';
 import { Animals } from './Animals.js';
 import { CollisionEngine } from '../core/CollisionEngine.js';
+import { mergeGroupChildren } from './MergeUtils.js';
 
 export class Environment {
     constructor(scene, { collision } = {}) {
@@ -87,6 +88,8 @@ export class Environment {
                 g.add(m);
             }
             g.position.set(-38 + i * 11, 18 + Math.random() * 10, -42 - Math.random() * 18);
+            // 5 كرات لكل غيمة كانت 5 نداءات رسم — تُدمج في واحدة
+            mergeGroupChildren(g, { name: 'Cloud' });
             this.clouds.push(g);
             this.group.add(g);
         }
