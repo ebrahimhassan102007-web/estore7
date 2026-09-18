@@ -8,7 +8,8 @@ import { GameState } from '../core/GameState.js';
 import {
     ORDER_TEMPLATES,
     NPCS,
-    ECONOMY
+    ECONOMY,
+    getItem
 } from '../data/GameData.js';
 
 import {
@@ -21,7 +22,54 @@ import {
 class OrderSystemService {
 
     constructor() {
+        this._initialized = false;
+        this._refreshTimer = null;
         this._initListeners();
+    }
+
+
+    // =========================================================
+    // BOOT — أول تعبئة للوحة + تحديث دوري حسب الاقتصاد
+    // =========================================================
+
+    /**
+     * @param {{immediate?:boolean}} opts
+     * interval من ECONOMY.orderRefreshInterval (ثواني).
+     */
+    init(opts = {}) {
+        if (this._initialized) return this;
+        this._initialized = true;
+
+        const first = () => {
+            try { this.refreshOrders(); } catch (err) {
+                console.warn('[OrderSystem] refresh notice:', err);
+            }
+        };
+
+        if (opts.immediate === false) {
+            setTimeout(first, 5000);
+        } else {
+            first();
+        }
+
+        const intervalSec = ECONOMY?.orderRefreshInterval || 300;
+
+        this._refreshTimer = setInterval(
+            () => {
+                this._checkExpiredOrders();
+                first();
+            },
+            Math.max(30, intervalSec) * 1000
+        );
+
+        return this;
+    }
+
+    stop() {
+        if (this._refreshTimer) {
+            clearInterval(this._refreshTimer);
+            this._refreshTimer = null;
+        }
     }
 
 
@@ -43,6 +91,14 @@ class OrderSystemService {
     // GENERATE / REFRESH ORDERS
     // =========================================================
 
+    /**
+     * توليد طلبات جديدة من ORDER_TEMPLATES.
+     * شكل القالب (GameData):
+     *   { id, minLevel, items: [{ item, min, max }],
+     *     reward: { coins: {min,max}, xp: {min,max} } }
+     * والناتج الذي يستهلكه accept/complete:
+     *   { items: [{ item, amount }], rewardCoins, rewardXp, expiresAt }
+     */
     refreshOrders() {
 
         const orders =
@@ -51,8 +107,10 @@ class OrderSystemService {
         const level =
             GameState.get('player.level') || 1;
 
-        const maxOrders =
-            3 + Math.floor(level / 5);
+        const maxOrders = Math.min(
+            ECONOMY?.maxActiveOrders || 6,
+            3 + Math.floor(level / 5)
+        );
 
         if (orders.length >= maxOrders) {
             return;
@@ -60,6 +118,31 @@ class OrderSystemService {
 
         const needed =
             maxOrders - orders.length;
+
+        // القوالب المتاحة لمستوى اللاعب
+        const pool =
+            (ORDER_TEMPLATES || []).filter(
+                tpl => !tpl.minLevel || tpl.minLevel <= level
+            );
+
+        const npcList = Array.isArray(NPCS)
+            ? NPCS
+            : Object.values(NPCS || {});
+
+        if (pool.length === 0 || npcList.length === 0) {
+            return;
+        }
+
+        // عدم تكرار نفس القالب أثناء وجوده على اللوحة
+        const taken = new Set(
+            orders.map(o => o?.templateId).filter(Boolean)
+        );
+
+        const now =
+            Date.now();
+
+        const multiplier =
+            ECONOMY?.orderRewardMultiplier || 1;
 
         const newOrders = [];
 
@@ -69,60 +152,99 @@ class OrderSystemService {
             i++
         ) {
 
-            if (
-                !ORDER_TEMPLATES ||
-                ORDER_TEMPLATES.length === 0
-            ) {
-                break;
-            }
+            const available =
+                pool.filter(t => !taken.has(t.id));
 
             const template =
-                randPick(ORDER_TEMPLATES);
+                randPick(available.length ? available : pool);
 
-            const npcList =
-                Object.values(NPCS || {});
-
-            if (npcList.length === 0) {
-                break;
-            }
+            if (!template) break;
 
             const npc =
                 randPick(npcList);
 
-            const now =
-                Date.now();
+            // ---- كميات محددة لكل عنصر في الطلب ----
+            const items =
+                (template.items || [])
+                    .map(req => {
+                        const min =
+                            Number(req.min) || 1;
+                        const max =
+                            Math.max(min, Number(req.max) || min);
 
-            const timeLimit =
-                template.timeLimit || 300;
+                        return {
+                            item:
+                                req.item || req.itemId,
+                            amount:
+                                randInt(min, max)
+                        };
+                    })
+                    .filter(entry => !!entry.item);
 
-            const rewardCoins =
-                Math.max(
-                    0,
-                    (template.rewardCoins || 0) +
-                    randInt(-5, 10)
+            if (items.length === 0) continue;
+
+            // ---- مكافآت محددة من المدى ----
+            const reward =
+                template.reward || {};
+
+            const coinRange =
+                reward.coins || {};
+
+            const xpRange =
+                reward.xp || {};
+
+            const rewardCoins = Math.round(
+                randInt(
+                    Number(coinRange.min) || 50,
+                    Math.max(
+                        Number(coinRange.min) || 50,
+                        Number(coinRange.max) || (Number(coinRange.min) || 50)
+                    )
+                ) * multiplier
+            );
+
+            const rewardXp =
+                randInt(
+                    Number(xpRange.min) || 10,
+                    Math.max(
+                        Number(xpRange.min) || 10,
+                        Number(xpRange.max) || (Number(xpRange.min) || 10)
+                    )
                 );
 
-            const order = {
+            // القوالب لا تحمل timeLimit — مدة افتراضية 15 دقيقة
+            const timeLimit =
+                template.timeLimit ||
+                ECONOMY?.orderDuration ||
+                900;
 
-                id: uuid(),
+            taken.add(template.id);
+
+            newOrders.push({
+                id:
+                    uuid(),
+
+                templateId:
+                    template.id,
 
                 customer:
                     npc.name,
 
-                customerIcon:
-                    npc.icon,
+                customerId:
+                    npc.id,
 
-                items:
-                    (template.items || []).map(
-                        item => ({
-                            ...item
-                        })
-                    ),
+                // NPCS تستعمل `avatar` (وليس `icon`)
+                customerIcon:
+                    npc.avatar || '🧑‍🌾',
+
+                personality:
+                    npc.personality || '',
+
+                items,
 
                 rewardCoins,
 
-                rewardXp:
-                    template.rewardXp || 0,
+                rewardXp,
 
                 timeLimit,
 
@@ -130,17 +252,14 @@ class OrderSystemService {
                     now,
 
                 expiresAt:
-                    now +
-                    (timeLimit * 1000),
+                    now + (timeLimit * 1000),
 
                 state:
                     'pending',
 
                 acceptedAt:
                     null
-            };
-
-            newOrders.push(order);
+            });
         }
 
         if (newOrders.length === 0) {
@@ -183,7 +302,7 @@ class OrderSystemService {
 
             return {
                 success: false,
-                error: 'Order not found'
+                error: 'الطلب غير موجود'
             };
         }
 
@@ -193,7 +312,7 @@ class OrderSystemService {
 
             return {
                 success: false,
-                error: 'Already processed'
+                error: 'هذا الطلب تمّت معالجته'
             };
         }
 
@@ -219,7 +338,7 @@ class OrderSystemService {
 
             return {
                 success: false,
-                error: 'Order expired'
+                error: 'انتهت مدة الطلب'
             };
         }
 
@@ -266,7 +385,7 @@ class OrderSystemService {
 
             return {
                 success: false,
-                error: 'Order not found'
+                error: 'الطلب غير موجود'
             };
         }
 
@@ -321,7 +440,7 @@ class OrderSystemService {
 
             return {
                 success: false,
-                error: 'Order not found'
+                error: 'الطلب غير موجود'
             };
         }
 
@@ -331,7 +450,7 @@ class OrderSystemService {
 
             return {
                 success: false,
-                error: 'Not accepted'
+                error: 'اقبل الطلب أولًا قبل التسليم'
             };
         }
 
@@ -361,7 +480,7 @@ class OrderSystemService {
 
             return {
                 success: false,
-                error: 'Order expired'
+                error: 'انتهت مدة الطلب'
             };
         }
 
@@ -400,7 +519,7 @@ class OrderSystemService {
                 return {
                     success: false,
                     error:
-                        `Missing ${amount} ${itemId}`
+                        `ينقصك ${amount} × ${getItem(itemId)?.name || itemId}`
                 };
             }
         }

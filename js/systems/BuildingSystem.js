@@ -14,6 +14,33 @@ import {
 
 import { uuid } from '../utils/Utils.js';
 
+/**
+ * BUILDINGS / EXPANSIONS / upgrades store price as { coins, gems }.
+ * Older records used a bare number — accept both shapes here so no
+ * call site pays `coins < {coins:500}` (which is always false).
+ */
+function costOf(entry) {
+    const c = entry?.cost ?? entry;
+    if (typeof c === 'number') {
+        return { coins: c, gems: Number(entry?.gems) || 0 };
+    }
+    return {
+        coins: Number(c?.coins) || 0,
+        gems: Number(c?.gems) || 0
+    };
+}
+
+/** Arabic, user-facing reason for a failed payment. */
+function insufficientMessage(coinsNeeded, gemsNeeded) {
+    if (gemsNeeded > 0 && coinsNeeded > 0) {
+        return `تحتاج إلى ${coinsNeeded} عملة و${gemsNeeded} جوهرة`;
+    }
+    if (gemsNeeded > 0) {
+        return `تحتاج إلى ${gemsNeeded} جوهرة`;
+    }
+    return `تحتاج إلى ${coinsNeeded} عملة`;
+}
+
 
 class BuildingSystemService {
 
@@ -29,7 +56,7 @@ class BuildingSystemService {
         if (!buildingData) {
             return {
                 success: false,
-                error: 'Invalid building'
+                error: 'مبنى غير معروف'
             };
         }
 
@@ -43,7 +70,7 @@ class BuildingSystemService {
             return {
                 success: false,
                 error:
-                    `Need level ${buildingData.unlockLevel}`
+                    `مطلوب مستوى ${buildingData.unlockLevel}`
             };
         }
 
@@ -54,18 +81,15 @@ class BuildingSystemService {
             GameState.get('player.gems') || 0;
 
         const cost =
-            buildingData.cost || 0;
-
-        const gemsCost =
-            buildingData.gems || 0;
+            costOf(buildingData);
 
         if (
-            coins < cost ||
-            gems < gemsCost
+            coins < cost.coins ||
+            gems < cost.gems
         ) {
             return {
                 success: false,
-                error: 'Not enough resources'
+                error: insufficientMessage(cost.coins, cost.gems)
             };
         }
 
@@ -119,13 +143,15 @@ class BuildingSystemService {
 
         GameState.set(
             'player.coins',
-            coins - cost
+            coins - cost.coins
         );
 
-        GameState.set(
-            'player.gems',
-            gems - gemsCost
-        );
+        if (cost.gems > 0) {
+            GameState.set(
+                'player.gems',
+                gems - cost.gems
+            );
+        }
 
         // -----------------------------------------------------
         // Create building
@@ -271,13 +297,13 @@ class BuildingSystemService {
             ) || 0;
 
         const cost =
-            upgradeData.cost || 0;
+            costOf(upgradeData);
 
-        if (coins < cost) {
+        if (coins < cost.coins) {
 
             return {
                 success: false,
-                error: 'Not enough coins'
+                error: insufficientMessage(cost.coins, 0)
             };
         }
 
@@ -287,7 +313,7 @@ class BuildingSystemService {
 
         GameState.set(
             'player.coins',
-            coins - cost
+            coins - cost.coins
         );
 
         // -----------------------------------------------------
@@ -336,7 +362,7 @@ class BuildingSystemService {
 
             return {
                 success: false,
-                error: 'No more expansions'
+                error: 'لا توجد توسعات إضافية'
             };
         }
 
@@ -356,7 +382,7 @@ class BuildingSystemService {
             return {
                 success: false,
                 error:
-                    `Need level ${requiredLevel}`
+                    `مطلوب مستوى ${requiredLevel}`
             };
         }
 
@@ -366,13 +392,18 @@ class BuildingSystemService {
             ) || 0;
 
         const cost =
-            expansionData.cost || 0;
+            costOf(expansionData);
 
-        if (coins < cost) {
+        const gems =
+            GameState.get(
+                'player.gems'
+            ) || 0;
+
+        if (coins < cost.coins || gems < cost.gems) {
 
             return {
                 success: false,
-                error: 'Not enough coins'
+                error: insufficientMessage(cost.coins, cost.gems)
             };
         }
 
@@ -419,8 +450,15 @@ class BuildingSystemService {
 
         GameState.set(
             'player.coins',
-            coins - cost
+            coins - cost.coins
         );
+
+        if (cost.gems > 0) {
+            GameState.set(
+                'player.gems',
+                gems - cost.gems
+            );
+        }
 
         for (
             const requirement
@@ -749,11 +787,11 @@ class BuildingSystemService {
             );
 
         const originalCost =
-            buildingData?.cost || 0;
+            costOf(buildingData);
 
         const refund =
             Math.floor(
-                originalCost * 0.30
+                originalCost.coins * 0.30
             );
 
         // -----------------------------------------------------

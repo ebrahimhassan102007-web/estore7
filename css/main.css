@@ -64,79 +64,10 @@ body {
    LOADING SCREEN
    ============================================================ */
 
-#loading-screen {
-    position: fixed;
-    inset: 0;
-
-    z-index: 10000;
-
-    display: flex;
-    flex-direction: column;
-
-    align-items: center;
-    justify-content: center;
-
-    padding:
-        max(24px, env(safe-area-inset-top))
-        max(24px, env(safe-area-inset-right))
-        max(24px, env(safe-area-inset-bottom))
-        max(24px, env(safe-area-inset-left));
-
-    background: #87ceeb;
-
-    opacity: 1;
-    visibility: visible;
-
-    transition:
-        opacity 0.5s ease,
-        visibility 0.5s ease;
-}
-
-#loading-screen[hidden] {
-    display: none;
-}
-
-#loading-screen.loading-screen-done {
-    opacity: 0;
-    visibility: hidden;
-}
-
-#loading-screen.loading-screen-error {
-    background: #263238;
-}
-
-#loading-text {
-    margin-bottom: 18px;
-
-    text-align: center;
-
-    font-size: 18px;
-    font-weight: 700;
-
-    color: #ffffff;
-}
-
-#loading-progress {
-    width: min(420px, 80vw);
-    height: 14px;
-
-    overflow: hidden;
-
-    border-radius: 999px;
-
-    background: rgba(255, 255, 255, 0.3);
-}
-
-#loading-bar {
-    width: 0%;
-    height: 100%;
-
-    border-radius: inherit;
-
-    background: #ffffff;
-
-    transition: width 0.25s ease;
-}
+/*
+   شاشة التحميل: البوستر + الشريط الذهبي معرّفان في <style> داخل index.html
+   (كانت هنا قواعد شاشة الإيموجي القديمة وكانت تتعارض مع البوستر — حُذفت).
+*/
 
 /* ============================================================
    GAME CONTAINER
@@ -205,169 +136,11 @@ body {
 }
 
 /* ============================================================
-   HUD
+   HUD — حُذفت قواعد الـ HUD القديمة (#hud, #hud-level-panel, #hud-xp-fill,
+   #hud-money, #hud-gems, #hud-time …): كانت تُطبَّق على الـ HUD النمطي الجديد
+   عبر المعرّفات فتُلغي تنسيقات hud.css. الـ HUD الآن في css/hud.css فقط،
+   ومعرّفاته mf-*/hud-* داخل #game-hud-overlay.
    ============================================================ */
-
-#hud {
-    position: absolute;
-
-    top: max(12px, env(safe-area-inset-top));
-    left: 0;
-    right: 0;
-
-    min-height: 70px;
-
-    padding:
-        8px
-        max(12px, env(safe-area-inset-right))
-        8px
-        max(12px, env(safe-area-inset-left));
-
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-
-    gap: 10px;
-
-    z-index: 200;
-
-    pointer-events: none;
-}
-
-/* ============================================================
-   LEVEL PANEL
-   ============================================================ */
-
-#hud-level-panel {
-    min-width: 150px;
-    max-width: 240px;
-
-    display: flex;
-    flex-direction: column;
-
-    gap: 4px;
-
-    padding: 7px 10px;
-
-    border-radius: 14px;
-
-    background: rgba(0, 0, 0, 0.35);
-
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-}
-
-#hud-level {
-    font-size: 14px;
-    font-weight: 800;
-
-    color: #ffffff;
-}
-
-#hud-xp-bar {
-    width: 100%;
-    height: 8px;
-
-    overflow: hidden;
-
-    border-radius: 999px;
-
-    background: rgba(255, 255, 255, 0.25);
-}
-
-#hud-xp-fill {
-    width: 0%;
-    height: 100%;
-
-    border-radius: inherit;
-
-    background: #ffca28;
-
-    transition: width 0.3s ease;
-}
-
-#hud-xp-text {
-    font-size: 10px;
-    font-weight: 600;
-
-    color: rgba(255, 255, 255, 0.9);
-
-    text-align: center;
-}
-
-/* ============================================================
-   HUD RESOURCES
-   ============================================================ */
-
-#hud-money,
-#hud-gems {
-    min-width: 72px;
-    min-height: 38px;
-
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    gap: 5px;
-
-    padding: 6px 10px;
-
-    border-radius: 999px;
-
-    background: rgba(0, 0, 0, 0.35);
-
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-
-    font-size: 14px;
-    font-weight: 800;
-
-    white-space: nowrap;
-}
-
-#hud-money-value,
-#hud-gems-value {
-    font-variant-numeric: tabular-nums;
-}
-
-/* ============================================================
-   HUD TIME
-   ============================================================ */
-
-#hud-time {
-    min-width: 92px;
-
-    display: flex;
-    flex-direction: column;
-
-    align-items: center;
-    justify-content: center;
-
-    gap: 1px;
-
-    padding: 5px 9px;
-
-    border-radius: 12px;
-
-    background: rgba(0, 0, 0, 0.35);
-
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-}
-
-#hud-clock {
-    font-size: 14px;
-    font-weight: 800;
-
-    font-variant-numeric: tabular-nums;
-}
-
-#hud-day {
-    font-size: 10px;
-    font-weight: 600;
-
-    opacity: 0.85;
-}
 
 /* ============================================================
    QUEST LIST
@@ -840,14 +613,6 @@ textarea:focus-visible {
 
 @supports (padding: env(safe-area-inset-top)) {
 
-    #hud {
-        padding-top:
-            max(
-                8px,
-                env(safe-area-inset-top)
-            );
-    }
-
 }
 
 /* ============================================================
@@ -855,35 +620,6 @@ textarea:focus-visible {
    ============================================================ */
 
 @media (max-width: 600px) {
-
-    #hud {
-        gap: 5px;
-        padding-left: 7px;
-        padding-right: 7px;
-    }
-
-    #hud-level-panel {
-        min-width: 110px;
-        max-width: 145px;
-    }
-
-    #hud-money,
-    #hud-gems {
-        min-width: 58px;
-
-        padding-left: 7px;
-        padding-right: 7px;
-
-        font-size: 12px;
-    }
-
-    #hud-time {
-        min-width: 70px;
-    }
-
-    #hud-clock {
-        font-size: 12px;
-    }
 
     #quest-list {
         top: 88px;
@@ -938,40 +674,9 @@ textarea:focus-visible {
     }
 
 }
-.loading-screen {
-    padding: 0;
-    overflow: hidden;
-}
 
-.loading-image {
-    display: block;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-object-position: center;
-}
-/* FULL SCREEN LOADING IMAGE */
-#loading-screen {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    display: flex;
-    align-items: center !important;
-    justify-content: center !important;
-    overflow: hidden !important;
-}
-
-#loading-screen .loading-image {
-    width: 100vw !important;
-    height: 100vh !important;
-    max-width: none !important;
-    max-height: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    display: block !important;
-    object-fit: cover !important;
-    object-position: center !important;
-}
+/*
+   حُذف بلوك "#loading-screen" القديم (كان يفرض 100vh/100vw بـ !important،
+   وهو ما يدفع الشريط الذهبي تحت شريط أدوات Safari على iOS).
+   تنسيق شاشة التحميل الآن في <style> داخل index.html فقط.
+*/

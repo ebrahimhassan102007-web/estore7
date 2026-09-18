@@ -9,6 +9,13 @@ import { GameState } from './GameState.js';
 const TICK_RATE = 1000;
 const ENERGY_REFILL_MINUTES = 5;
 
+/*
+ * 1 يوم داخل اللعبة = 12 دقيقة حقيقية (المطلوب في GDD: 10–15 دقيقة).
+ * كان يُكتب قديمًا 24*60*60*1000 (وهو 24 ساعة حقيقية!) فلا يتحرك
+ * دورة النهار/الليل عمليًا. كل الحسابات تستخدم هذه الثابتة.
+ */
+export const DAY_LENGTH_MS = 12 * 60 * 1000;
+
 class TimeManager {
     constructor() {
         this._interval = null;
@@ -151,12 +158,8 @@ class TimeManager {
     }
 
     _advanceDayCycle(elapsedMs) {
-        // One complete game day = 24 real minutes
         const dayLength =
-            24 *
-            60 *
-            60 *
-            1000;
+            DAY_LENGTH_MS;
 
         const current =
             GameState.get(
@@ -164,7 +167,7 @@ class TimeManager {
             ) || 0;
 
         const advance =
-            (elapsedMs % dayLength) /
+            elapsedMs /
             dayLength;
 
         const newCycle =
@@ -174,6 +177,17 @@ class TimeManager {
             'time.dayCycle',
             newCycle
         );
+
+        // عدد الأيام الكاملة التي مرّت أثناء الغياب
+        const wholeDays =
+            Math.floor(advance);
+
+        if (wholeDays > 0) {
+            GameState.set(
+                'time.day',
+                (GameState.get('time.day') || 1) + wholeDays
+            );
+        }
 
         // Four seasons, each lasting 7 days
         const seasons = [
@@ -325,12 +339,8 @@ class TimeManager {
     }
 
     _tickDayCycle(dt) {
-        // One game day = 24 real minutes
         const dayLength =
-            24 *
-            60 *
-            60 *
-            1000;
+            DAY_LENGTH_MS;
 
         const advance =
             (dt * 1000) /
@@ -341,8 +351,21 @@ class TimeManager {
                 'time.dayCycle'
             ) || 0;
 
-        const newCycle =
-            (current + advance) % 1;
+        let newCycle =
+            current + advance;
+
+        // اليوم يلفّ — عدّاد الأيام يشتّت في الحالة ويُحفظ
+        if (newCycle >= 1) {
+            newCycle -= 1;
+            GameState.set(
+                'time.day',
+                (GameState.get('time.day') || 1) + 1
+            );
+            Events.emit(
+                'time:day',
+                GameState.get('time.day') || 1
+            );
+        }
 
         GameState.set(
             'time.dayCycle',
@@ -360,11 +383,71 @@ class TimeManager {
             );
 
         if (oldHour !== newHour) {
+            // ساعات/دقائق داخل الحالة (مطلوبة في شجرة GameState)
+            const mins = Math.floor(
+                (newCycle * 24 - newHour) * 60
+            );
+            GameState.set('time.hours', newHour);
+            GameState.set('time.minutes', mins);
+
             Events.emit(
                 'time:hour',
                 newHour
             );
         }
+    }
+
+    /* ========================================================
+       CLOCK API — للمهام والواجهة ودورة النهار/الليل
+       ======================================================== */
+
+    /** @returns {{hours:number,minutes:number,day:number,dayProgress:number,season:string}} */
+    getClock() {
+        const cycle =
+            GameState.get(
+                'time.dayCycle'
+            ) || 0;
+
+        const totalMinutes =
+            cycle * 24 * 60;
+
+        const hours =
+            Math.floor(totalMinutes / 60) % 24;
+
+        const minutes =
+            Math.floor(totalMinutes % 60);
+
+        return {
+            hours,
+            minutes,
+            day:
+                GameState.get('time.day') || 1,
+            dayProgress:
+                cycle,
+            season:
+                GameState.get('time.season') || 'spring'
+        };
+    }
+
+    /** "08:05 ص" — تنسيق الساعة للـ HUD. */
+    getClockLabel() {
+        const { hours, minutes } =
+            this.getClock();
+        const suffix =
+            hours < 12 ? 'ص' : 'م';
+        const h12 =
+            ((hours + 11) % 12) + 1;
+        return `${String(h12).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${suffix}`;
+    }
+
+    /** رمز الطقس/الوقت للـ HUD. */
+    getPhaseIcon() {
+        const { hours } =
+            this.getClock();
+        if (hours >= 5 && hours < 8) return '🌅';
+        if (hours >= 8 && hours < 17) return '☀️';
+        if (hours >= 17 && hours < 20) return '🌇';
+        return '🌙';
     }
 
     /**

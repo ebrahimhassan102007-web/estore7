@@ -36,6 +36,7 @@ class GameStateManager {
 
             farm: {
                 name: 'مزرعة العمر',
+                maxAnimals: 20,
                 gridSize: {
                     rows: 4,
                     cols: 6
@@ -67,6 +68,11 @@ class GameStateManager {
             production: {
                 queues: {},
                 completed: 0
+            },
+
+            // مهام اللاعب — QuestSystem يملؤها من INITIAL_QUESTS عند أول تشغيل
+            quests: {
+                items: []
             },
 
             orders: {
@@ -134,6 +140,10 @@ class GameStateManager {
                 gameTime: 0,
                 lastTick: Date.now(),
                 dayCycle: 0,
+                // ساعة اللعبة داخل الحالة (1 يوم = 12 دقيقة حقيقية)
+                hours: 8,
+                minutes: 0,
+                day: 1,
                 season: 'spring'
             }
         };

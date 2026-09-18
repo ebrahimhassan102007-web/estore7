@@ -1,0 +1,13 @@
+# dependencies / tooling (never committed)
+node_modules
+npm-debug.log*
+
+# editors & OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# build output
+dist/
+out/

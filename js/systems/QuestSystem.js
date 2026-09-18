@@ -70,6 +70,18 @@ export const INITIAL_QUESTS = [
         claimed: false
     },
     {
+        id: "collect_milk_3",
+        title: "اجمع 3 حليب",
+        description: "أطعم البقرة بالذرة ثم اجمع الحليب 🥛",
+        type: "collect_milk",
+        target: 3,
+        progress: 0,
+        rewardCoins: 120,
+        rewardXP: 60,
+        completed: false,
+        claimed: false
+    },
+    {
         id: "sell_10_crops",
         title: "بِع 10 محاصيل",
         description: "قم ببيع المحاصيل المحصودة لكسب العملات.",
@@ -96,6 +108,17 @@ class QuestSystemService {
         if (!Array.isArray(quests) || quests.length === 0) {
             quests = JSON.parse(JSON.stringify(INITIAL_QUESTS));
             GameState.set('quests.items', quests);
+        } else {
+            /*
+             * ترحيل: مهام أُضيفت بعد إنشاء الحفظ (مثل «اجمع 3 حليب»)
+             * نلحقها بدل تجاهلها حتى لا يبقى الحفظ القديم بلا مهمة الحليب.
+             */
+            const known = new Set(quests.map(q => q.id));
+            const missing = INITIAL_QUESTS.filter(q => !known.has(q.id));
+            if (missing.length > 0) {
+                quests = [...quests, ...JSON.parse(JSON.stringify(missing))];
+                GameState.set('quests.items', quests);
+            }
         }
 
         this.bindEvents();
@@ -111,6 +134,10 @@ class QuestSystemService {
         Events.on('land:purchased', () => this.incrementProgress('buy_land', 1));
         Events.on('land:prepared', () => this.incrementProgress('prepare_land', 1));
         Events.on('crop:sold', (amount = 1) => this.incrementProgress('sell', amount));
+        Events.on('animal:collected', (animalId, productId, amount = 1) => {
+            if (productId === 'milk') this.incrementProgress('collect_milk', amount);
+            this.incrementProgress('collect_animal', amount);
+        });
     }
 
     getQuests() {

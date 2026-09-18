@@ -17,6 +17,7 @@
 import * as THREE from 'three';
 import { Events } from '../core/EventBus.js';
 import { getBuilding } from '../data/GameData.js';
+import { mergeGroupChildren, mergeSubtree } from './MergeUtils.js';
 
 const COLORS = {
     millWood: 0x8a552e,
@@ -250,6 +251,9 @@ export class ProductionYard {
         g.add(blades);
         g.userData.blades = blades;
 
+        // الشفرات تدور ككل ⇒ تدمج الشجرة كلها في mesh واحد
+        mergeSubtree(blades, { name: 'Mill-blades' });
+
         // أكياس قمح كديكور
         for (const [dx, dz] of [[0.95, 0.75], [1.15, 0.5]]) {
             const sack = new THREE.Mesh(
@@ -262,6 +266,7 @@ export class ProductionYard {
             g.add(sack);
         }
 
+        mergeGroupChildren(g, { name: 'Mill-body' });
         this._selectionRing(g);
         return g;
     }
@@ -327,6 +332,7 @@ export class ProductionYard {
             );
             puff.position.set(0.5, 2.3 + i * 0.4, -0.2);
             puff.userData.phase = i / 3;
+            puff.userData.noMerge = true; // يتحرك كل إطار
             g.add(puff);
             smokePuffs.push(puff);
         }
@@ -345,6 +351,7 @@ export class ProductionYard {
             this._mats.window
         );
         win.position.set(-0.05, 0.85, 0.77);
+        win.userData.noMerge = true; // توهّجه يتحرك عبر g.userData.glow
         g.add(win);
 
         // رف خبز خارجي
@@ -364,6 +371,7 @@ export class ProductionYard {
             g.add(bun);
         }
 
+        mergeGroupChildren(g, { name: 'Bakery-body' });
         this._selectionRing(g);
         return g;
     }
@@ -386,6 +394,7 @@ export class ProductionYard {
         roof.position.y = 1.4;
         roof.rotation.y = Math.PI / 4;
         g.add(roof);
+        mergeGroupChildren(g, { name: 'Shed-body' });
         this._selectionRing(g);
         return g;
     }

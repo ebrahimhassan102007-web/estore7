@@ -173,6 +173,7 @@ export const TRANSLATIONS = Object.freeze({
     ar: {
         buy: 'شراء',
         sell: 'بيع',
+        accept: 'قبول',
         locked: 'مقفل 🔒',
         unlocked: 'مفتوح',
         levelRequired: 'المستوى مطلوب',
@@ -209,6 +210,7 @@ export const TRANSLATIONS = Object.freeze({
     en: {
         buy: 'Buy',
         sell: 'Sell',
+        accept: 'Accept',
         locked: 'Locked 🔒',
         unlocked: 'Unlocked',
         levelRequired: 'Level required',

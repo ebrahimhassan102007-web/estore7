@@ -224,18 +224,24 @@
       100% { opacity: 0; transform: translateY(-90px) scale(0.85); }
     }
 
-    /* Loading Screen */
+    /* ============================================================
+       شاشة التحميل — بوستر full-viewport + شريط ذهبي رفيع أسفله
+       ------------------------------------------------------------
+       المواصفات المقفلة:
+         • البوستر my-farm-loading.jpg يملأ الشاشة (object-fit: cover)
+         • شريط تقدّم رفيع ذهبي/أصفر في أسفل البوستر
+         • النص تحت الشريط بالضبط: «جاري التحميل... Loading»
+         • التقدّم حقيقي من main.js عبر data-farm-boot على <html>
+         • يحترم prefers-reduced-motion، وله بديل إن فشل تحميل الصورة
+       ============================================================ */
     #loading-screen {
       position: fixed;
       inset: 0;
       z-index: 10000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      background: linear-gradient(180deg, #5dbcf0 0%, #dff3ff 50%, #62a832 100%);
-      color: #fff;
-      transition: opacity 0.4s ease, visibility 0.4s ease;
+      display: block;
+      overflow: hidden;
+      background: #12220f;
+      transition: opacity 0.45s ease, visibility 0.45s ease;
     }
 
     #loading-screen.fade-out {
@@ -244,61 +250,87 @@
       pointer-events: none !important;
     }
 
-    #loading-screen .loading-card {
-      text-align: center;
-      padding: 30px 24px;
-      border-radius: 24px;
-      background: rgba(35, 65, 30, 0.45);
-      backdrop-filter: blur(10px);
-      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
-      max-width: 90vw;
-      width: 300px;
-    }
-
-    #loading-screen .loading-icon {
-      font-size: 50px;
-      margin-bottom: 10px;
-      animation: bounce 1.4s infinite ease-in-out;
-    }
-
-    #loading-screen h1 {
-      margin: 0 0 6px;
-      font-size: 28px;
-      font-weight: 900;
-    }
-
-    #loading-screen p {
-      margin: 0;
-      font-size: 13px;
-      opacity: 0.95;
-    }
-
-    #loading-screen .loading-bar {
+    #loading-screen .boot-art {
+      position: absolute;
+      inset: 0;
       width: 100%;
-      height: 8px;
-      margin-top: 20px;
-      overflow: hidden;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.35);
-    }
-
-    #loading-screen .loading-fill {
-      width: 0%;
       height: 100%;
+      object-fit: cover;
+      object-position: center 42%;
+      display: block;
+      animation: bootArtIn 0.55s ease both;
+    }
+
+    #loading-screen .boot-scrim {
+      position: absolute;
+      inset: auto 0 0 0;
+      height: min(38vh, 260px);
+      background: linear-gradient(180deg,
+        rgba(8, 14, 6, 0) 0%,
+        rgba(8, 14, 6, 0.55) 55%,
+        rgba(5, 10, 4, 0.9) 100%);
+      pointer-events: none;
+    }
+
+    #loading-screen .boot-status {
+      position: absolute;
+      inset: auto
+        max(16px, env(safe-area-inset-right))
+        max(20px, env(safe-area-inset-bottom))
+        max(16px, env(safe-area-inset-left));
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 9px;
+    }
+
+    /* الشريط الرفيع */
+    #loading-screen .boot-track {
+      position: relative;
+      width: 100%;
+      height: 5px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.22);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+    }
+
+    #loading-screen .boot-fill {
+      display: block;
+      height: 100%;
+      width: 0%;
       border-radius: inherit;
-      background: #ffd54f;
-      animation: loadProgress 1.0s ease forwards;
+      background: linear-gradient(90deg, #f0a91a 0%, #ffe9a8 55%, #f0a91a 100%);
+      transition: width 0.25s ease;
     }
 
-    @keyframes bounce {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-10px); }
+    /* النص تحت الشريط — ثابت ومقفل */
+    #loading-screen .boot-caption {
+      margin: 0;
+      text-align: center;
+      direction: rtl;
+      font-size: clamp(13px, 3.6vw, 16px);
+      font-weight: 800;
+      letter-spacing: 0.4px;
+      color: #ffe9b0;
+      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
     }
 
-    @keyframes loadProgress {
-      0% { width: 10%; }
-      50% { width: 60%; }
-      100% { width: 100%; }
+    @keyframes bootArtIn {
+      from { opacity: 0; transform: scale(1.04); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+
+    /* البوستر مفقود؟ لا نترك شاشة بيضاء */
+    #loading-screen.no-art {
+      background: radial-gradient(120% 80% at 50% 0%, #5dbcf0 0%, #2f7fb8 45%, #1b4d24 100%);
+    }
+
+    #loading-screen.no-art .boot-art { display: none; }
+
+    @media (prefers-reduced-motion: reduce) {
+      #loading-screen .boot-art { animation: none; }
+      #loading-screen .boot-fill { transition: none; }
     }
   </style>
 
@@ -340,18 +372,63 @@
       </div>
     </div>
 
-    <!-- Loading Screen -->
-    <div id="loading-screen">
-      <div class="loading-card">
-        <div class="loading-icon">🌾</div>
-        <h1>MY FARM 3D</h1>
-        <p>جاري بناء عالم المزرعة والأراضي...</p>
-        <div class="loading-bar">
-          <div class="loading-fill"></div>
+    <!-- Loading Screen — بوستر مزرعتي full-viewport + شريط ذهبي رفيع -->
+    <div id="loading-screen" role="status" aria-live="polite" aria-label="جارِ تحميل المزرعة">
+      <img class="boot-art" src="./my-farm-loading.jpg" alt=""
+           fetchpriority="high" decoding="async"
+           onerror="this.closest('#loading-screen').classList.add('no-art')">
+      <div class="boot-scrim"></div>
+      <div class="boot-status">
+        <div class="boot-track" id="loading-track" role="progressbar"
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+             aria-label="جاري التحميل... Loading">
+          <div class="boot-fill" id="loading-fill"></div>
         </div>
+        <p class="boot-caption" id="loading-caption">جاري التحميل... Loading</p>
       </div>
     </div>
   </div>
+
+  <!--
+    تقدّم شاشة التحميل: يقرأ data-farm-boot الذي تكتبه مراحل إقلاع main.js
+    (18 → 46 → 70 → 100) ويرسمه على الشريط الذهبي. لا تقدّم مصطنع.
+  -->
+  <script>
+    (function () {
+      var fill = document.getElementById('loading-fill');
+      var track = document.getElementById('loading-track');
+      var screen = document.getElementById('loading-screen');
+      if (!fill || !screen) return;
+
+      var shown = 0;
+      var timer = 0;
+
+      function paint(value) {
+        var pct = Math.max(0, Math.min(100, Math.round(value)));
+        fill.style.width = pct + '%';
+        if (track) track.setAttribute('aria-valuenow', String(pct));
+      }
+
+      function tick() {
+        var announced = parseInt(
+          document.documentElement.getAttribute('data-farm-boot') || '0', 10
+        );
+        if (!isFinite(announced)) announced = 0;
+        if (announced > shown) {
+          shown = announced;
+          paint(shown);
+        }
+        if (!screen.parentNode || screen.classList.contains('fade-out')) {
+          paint(100);
+          clearInterval(timer);
+        }
+      }
+
+      paint(0);
+      tick();
+      timer = setInterval(tick, 120);
+    })();
+  </script>
 
   <script type="module" src="./js/main.js"></script>
 </body>

@@ -6,6 +6,7 @@
  */
 
 import * as THREE from 'three';
+import { mergeMeshes } from './MergeUtils.js';
 
 export class FoliageManager {
     constructor(scene, { collision } = {}) {
@@ -130,6 +131,12 @@ export class FoliageManager {
             trunk.castShadow = true;
             t.add(trunk);
 
+            /*
+             * 4 كتل أوراق لكل شجرة × 8 أشجار = 32 نداء رسم.
+             * تُدمج في mesh واحد بألوان رؤوس (الجذع يبقى منفصلًا لأن
+             * مواد الأوراق flatShading والجذع ليس كذلك).
+             */
+            const leaves = [];
             [[0, 4, 0, 1.7], [-1, 3.7, 0, 1.25], [1, 3.8, 0.2, 1.35], [0, 4.7, 0, 1.2]].forEach((a, j) => {
                 const leaf = new THREE.Mesh(
                     new THREE.IcosahedronGeometry(a[3], 1),
@@ -138,7 +145,9 @@ export class FoliageManager {
                 leaf.position.set(a[0], a[1], a[2]);
                 leaf.castShadow = true;
                 t.add(leaf);
+                leaves.push(leaf);
             });
+            mergeMeshes(leaves, { name: `Tree-${n}-leaves` });
 
             this.group.add(t);
             this.trees.push(t);
