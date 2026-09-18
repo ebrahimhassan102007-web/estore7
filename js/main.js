@@ -16,7 +16,11 @@ import { Time } from './core/TimeManager.js';
 import { LandSystem, LAND_CONFIG } from './systems/LandSystem.js';
 import { FarmingSystem, CROPS_DEFINITIONS } from './systems/FarmingSystem.js';
 import { ProductionSystem } from './systems/ProductionSystem.js';
-import { getBuilding, STARTER_KIT } from './data/GameData.js';
+import { InventorySystem } from './systems/InventorySystem.js';
+import { XPSystem } from './systems/XPSystem.js';
+import { OrderSystem } from './systems/OrderSystem.js';
+import { AnimalSystem } from './systems/AnimalSystem.js';
+import { getBuilding, STARTER_KIT, ITEMS, getAnimal } from './data/GameData.js';
 import { uuid } from './utils/Utils.js';
 import { ProductionPanel } from './ui/ProductionPanel.js';
 import { Toast } from './ui/Toast.js';
@@ -430,6 +434,238 @@ class PlayerController {
     }
 }
 
+
+/* ============================================================
+   CROP BATCH RENDERER — دفعات InstancedMesh لكل محصول/مرحلة
+   ------------------------------------------------------------
+   بديل عن "mesh لكل خانة": رسمات المحصول كانت تولّد 6–10 meshes
+   لكل خانة (حتى ~120 draw call في مزرعة ممتلئة). الآن:
+     • InstancedMesh واحد للساق + واحد للرأس لكل نوع محصول
+     • InstancedMesh واحد لأسرّة التربة (لون مختلف عند الري)
+     • إعادة بناء فقط عند تغيّر الحالة (زراعة/ري/نضج/حصاد)
+     • نبض مرحلة «جاهز» يحدّث مصفوفات الحالات الناضجة فقط
+   الإجمالي في أسوأ حالة: 4 محاصيل × 2 + 1 ≈ 9 draw calls.
+   ============================================================ */
+const STAGE_SCALE = { sprout: 0.34, growing: 0.66, ready: 1.0, withered: 0.74 };
+const WITHERED_COLOR = 0x7a6642;
+
+class CropBatchRenderer {
+    constructor(scene, { capacity = 64 } = {}) {
+        this.scene = scene;
+        this.capacity = capacity;
+        this.dirty = true;
+        this.readyCount = 0;
+
+        // هندسة مشتركة لكل المحاصيل
+        this.stemGeo = new THREE.CylinderGeometry(0.045, 0.062, 1, 5);
+        this.bedGeo = new THREE.BoxGeometry(1.85, 0.07, 1.85);
+
+        this.headGeoByCrop = {
+            wheat: new THREE.ConeGeometry(0.1, 0.34, 6),
+            corn: new THREE.CylinderGeometry(0.1, 0.09, 0.38, 7),
+            carrot: new THREE.ConeGeometry(0.17, 0.26, 7),
+            tomato: new THREE.SphereGeometry(0.13, 8, 6)
+        };
+
+        const stemMat = new THREE.MeshStandardMaterial({ roughness: 0.8 });
+        const headMat = new THREE.MeshStandardMaterial({ roughness: 0.55 });
+        const bedMat = new THREE.MeshStandardMaterial({ roughness: 0.98 });
+
+        this.bedCapacity = capacity * 4;
+        this.beds = this._makeBatch(this.bedGeo, bedMat, this.bedCapacity);
+        this.groups = new Map();
+
+        for (const cropId of Object.keys(CROPS_DEFINITIONS)) {
+            this.groups.set(cropId, {
+                stem: this._makeBatch(this.stemGeo, stemMat, capacity * 12),
+                head: this._makeBatch(this.headGeoByCrop[cropId] || this.stemGeo, headMat, capacity * 4),
+                plants: []      // { x, z, scale, stage, cropId }
+            });
+        }
+
+        // كائنات معاد استخدامها — لا تخصيص داخل الحلقة (P5)
+        this._m = new THREE.Matrix4();
+        this._q = new THREE.Quaternion();
+        this._e = new THREE.Euler();
+        this._v = new THREE.Vector3();
+        this._sc = new THREE.Vector3();
+        this._c = new THREE.Color();
+    }
+
+    _makeBatch(geo, mat, count) {
+        const mesh = new THREE.InstancedMesh(geo, mat, Math.max(1, count));
+        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.count = 0;
+        mesh.visible = false;
+        mesh.frustumCulled = false;
+        this.scene.add(mesh);
+        return mesh;
+    }
+
+    markDirty() {
+        this.dirty = true;
+    }
+
+    _setColor(mesh, i, hex) {
+        this._c.setHex(hex);
+        mesh.setColorAt(i, this._c);
+    }
+
+    /** يعيد تعبئة كل الدفعات من حالة FarmingSystem الحالية. */
+    rebuild(fieldMeshes) {
+        this.dirty = false;
+        this.readyCount = 0;
+
+        for (const g of this.groups.values()) g.plants.length = 0;
+
+        let bedIndex = 0;
+        const bedMesh = this.beds;
+
+        for (const [fieldId, entry] of fieldMeshes.entries()) {
+            const field = entry.fieldData;
+            if (!field || !field.purchased || !field.prepared) continue;
+
+            const slots = FarmingSystem.getOrCreateSlots(fieldId);
+
+            for (let i = 0; i < slots.length; i++) {
+                const slot = slots[i];
+                const wx = field.posX + slot.ox;
+                const wz = field.posZ + slot.oz;
+
+                // سرير التربة (لون داكن رطب عند الري)
+                if (bedIndex < this.bedCapacity) {
+                    this._m.makeTranslation(wx, 0.035, wz);
+                    bedMesh.setMatrixAt(bedIndex, this._m);
+                    this._setColor(bedMesh, bedIndex, slot.watered ? 0x3d2310 : 0x543217);
+                    bedIndex++;
+                }
+
+                if (slot.state === 'empty' || !slot.cropType) continue;
+
+                const group = this.groups.get(slot.cropType);
+                if (!group) continue;
+                if (group.plants.length >= this.capacity) continue;
+
+                group.plants.push({
+                    x: wx,
+                    z: wz,
+                    slot,
+                    stage: this._stageOf(slot),
+                    spin: (fieldId.length + i) % 7
+                });
+
+                if (slot.state === 'ready') this.readyCount++;
+            }
+        }
+
+        bedMesh.count = bedIndex;
+        bedMesh.visible = bedIndex > 0;
+        bedMesh.instanceMatrix.needsUpdate = true;
+        if (bedMesh.instanceColor) bedMesh.instanceColor.needsUpdate = true;
+
+        for (const [cropId, group] of this.groups.entries()) {
+            this._writeGroup(cropId, group);
+        }
+    }
+
+    _stageOf(slot) {
+        if (slot.state === 'ready') return 'ready';
+        if (slot.state === 'withered') return 'withered';
+
+        const def = CROPS_DEFINITIONS[slot.cropType] || CROPS_DEFINITIONS.wheat;
+        const total = def.growTime * 1000;
+        const progress = Math.min(1, Math.max(0, 1 - (slot.readyAt - Date.now()) / total));
+        return progress < 0.4 ? 'sprout' : 'growing';
+    }
+
+    _colorFor(cropId, stage) {
+        if (stage === 'withered') return WITHERED_COLOR;
+        const def = CROPS_DEFINITIONS[cropId] || CROPS_DEFINITIONS.wheat;
+        return (def.colors && def.colors[stage]) || def.colors.ready;
+    }
+
+    _writeGroup(cropId, group) {
+        const stemCount = group.plants.length * 3;
+        const headCount = group.plants.length;
+
+        group.stem.count = stemCount;
+        group.head.count = headCount;
+        group.stem.visible = stemCount > 0;
+        group.head.visible = headCount > 0;
+
+        if (headCount === 0) return;
+
+        const def = CROPS_DEFINITIONS[cropId] || CROPS_DEFINITIONS.wheat;
+        let si = 0;
+
+        for (let pi = 0; pi < group.plants.length; pi++) {
+            const plant = group.plants[pi];
+            const stage = plant.stage;
+            const base = STAGE_SCALE[stage] ?? 1;
+            const color = this._colorFor(cropId, stage);
+            const headColor = stage === 'ready' ? color : def.colors.growing;
+
+            for (let k = 0; k < 3; k++) {
+                const ang = (k / 3) * Math.PI * 2 + plant.spin * 0.4;
+                const h = 0.62 * base;
+                this._v.set(plant.x + Math.cos(ang) * 0.24, h / 2 + 0.06, plant.z + Math.sin(ang) * 0.24);
+                this._e.set(0, ang, Math.sin(ang) * 0.12);
+                this._q.setFromEuler(this._e);
+                this._sc.set(1, h, 1);
+                this._m.compose(this._v, this._q, this._sc);
+                group.stem.setMatrixAt(si, this._m);
+                this._setColor(group.stem, si, color);
+                si++;
+            }
+
+            const headY = 0.62 * base + 0.14;
+            this._v.set(plant.x, headY, plant.z);
+            this._e.set(0, plant.spin, cropId === 'corn' ? -0.3 : 0);
+            this._q.setFromEuler(this._e);
+            const hs = cropId === 'tomato' ? base : Math.max(0.45, base);
+            this._sc.set(hs, hs, hs);
+            this._m.compose(this._v, this._q, this._sc);
+            group.head.setMatrixAt(pi, this._m);
+            this._setColor(group.head, pi, headColor);
+        }
+
+        group.stem.instanceMatrix.needsUpdate = true;
+        group.head.instanceMatrix.needsUpdate = true;
+        if (group.stem.instanceColor) group.stem.instanceColor.needsUpdate = true;
+        if (group.head.instanceColor) group.head.instanceColor.needsUpdate = true;
+    }
+
+    /** نبض خفيف للمحاصيل الناضجة فقط — بلا إعادة بناء كاملة. */
+    pulse(elapsed) {
+        if (this.readyCount === 0) return;
+        const wobble = 1 + Math.sin(elapsed * 4.2) * 0.07;
+
+        for (const [cropId, group] of this.groups.entries()) {
+            let touched = false;
+            for (let pi = 0; pi < group.plants.length; pi++) {
+                const plant = group.plants[pi];
+                if (plant.stage !== 'ready') continue;
+                touched = true;
+                const hs = Math.max(0.45, STAGE_SCALE.ready) * wobble;
+                this._v.set(plant.x, 0.62 * STAGE_SCALE.ready + 0.14, plant.z);
+                this._e.set(0, plant.spin, cropId === 'corn' ? -0.3 : 0);
+                this._q.setFromEuler(this._e);
+                this._sc.set(hs, hs, hs);
+                this._m.compose(this._v, this._q, this._sc);
+                group.head.setMatrixAt(pi, this._m);
+            }
+            if (touched) group.head.instanceMatrix.needsUpdate = true;
+        }
+    }
+
+    update(delta, elapsed, fieldMeshes) {
+        if (this.dirty) this.rebuild(fieldMeshes);
+        this.pulse(elapsed);
+    }
+}
+
 /* ============================================================
    APPLICATION CORE
    ============================================================ */
@@ -488,6 +724,23 @@ class MyFarmApp {
         this._boundKeyUp = (e) => this.handleKeyUp(e);
     }
 
+    /**
+     * يبلّغ شاشة التحميل بنسبة جاهزية عبر سمة على <html>
+     * (بلا متغيّرات عامة جديدة — انظر سكربت اللودر في index.html).
+     */
+    setBootProgress(percent) {
+        try {
+            document.documentElement.setAttribute('data-farm-boot', String(Math.round(percent)));
+        } catch (e) { /* اللودر غير موجود — نتجاهل */ }
+    }
+
+    /** الوسائط بين الأنظمة والـ Toast: أي نظام يرجع {success,error} يُعرض بالعربية. */
+    setupToastBridge() {
+        Events.on('toast:info', (msg) => this.toast?.info?.(msg));
+        Events.on('toast:success', (msg) => this.toast?.success?.(msg));
+        Events.on('toast:error', (msg) => this.toast?.error?.(msg));
+    }
+
     cacheDOM() {
         this.container = document.getElementById('game-container');
         this.canvas = document.getElementById('game-canvas');
@@ -500,6 +753,7 @@ class MyFarmApp {
         try {
             console.log('[MY FARM] Booting living Farm World & Real Farming System...');
             this.cacheDOM();
+            this.setBootProgress(18);
             this.createRenderer();
             this.createScene();
             this.createCamera();
@@ -518,8 +772,23 @@ class MyFarmApp {
                 ]);
             } catch (e) {}
 
+            // 📈 منحنى المستوى — يستمع لـ xp:gain و player.xp
+            try {
+                XPSystem.init();
+            } catch (e) {
+                console.warn('[MY FARM] XPSystem notice:', e);
+            }
+
+            this.setBootProgress(46);
             LandSystem.init();
             QuestSystem.init();
+
+            // 🌾 خانات المحاصيل محفوظة داخل farm.tiles — نعيد بناء العرض الحي
+            try {
+                FarmingSystem.hydrate();
+            } catch (e) {
+                console.warn('[MY FARM] Farming hydrate notice:', e);
+            }
 
             // 🏭 سلسلة الإنتاج Hay Day: طاحونة الحبوب ← المخبز
             try {
@@ -532,6 +801,10 @@ class MyFarmApp {
             this.createPlayer();
             this.buildFarmFields();
 
+            // 🌾 دفعات رسم المحاصيل (InstancedMesh لكل محصول + مرحلة)
+            this.cropBatches = new CropBatchRenderer(this.scene, { capacity: 128 });
+            this.cropBatches.markDirty();
+
             // 🏭 مباني الإنتاج ثلاثية الأبعاد (تتزامن مع الحالة تلقائيًا)
             try {
                 this.productionYard = new ProductionYard({ scene: this.scene, collision: this.collision });
@@ -540,6 +813,7 @@ class MyFarmApp {
                 console.warn('[MY FARM] ProductionYard notice:', e);
             }
 
+            this.setBootProgress(70);
             this.setupCameraTouch();
             this.setupUnifiedPromptUI();
 
@@ -583,8 +857,23 @@ class MyFarmApp {
                     getBuildingWorldPos: (id) => this.productionYard?.getWorldPos(id) || null
                 });
                 this.productionPanel.mount(document.body);
+                this.setupToastBridge();
             } catch (e) {
                 console.warn('[MY FARM] Production UI notice:', e);
+            }
+
+            // 🐄 ربط حيوانات الزينة بنظام الحيوانات (طبقة واحدة — انظر linkFarmAnimals)
+            try {
+                this.linkFarmAnimals();
+            } catch (e) {
+                console.warn('[MY FARM] Animals bridge notice:', e);
+            }
+
+            // 📋 لوحة الطلبات + السوق (منطق يعمل دون UI حتى الآن)
+            try {
+                OrderSystem.init({ immediate: false });
+            } catch (e) {
+                console.warn('[MY FARM] OrderSystem notice:', e);
             }
 
             try {
@@ -597,9 +886,17 @@ class MyFarmApp {
             Events.on('land:purchase-failed', (data) => this.onLandPurchaseFailed(data));
             Events.on('land:axe-hit', (data) => this.onLandAxeHit(data));
             Events.on('land:prepared', (data) => this.onLandPrepared(data));
-            Events.on('crop:planted', (data) => this.renderSlotCrop(data.fieldId, data.slotIndex));
-            Events.on('crop:ready', (data) => this.renderSlotCrop(data.fieldId, data.slot.slotIndex));
+            Events.on('crop:planted', () => {
+                this.cropBatches?.markDirty();
+                this.hud?.refreshHotbarCounts?.();
+            });
+            Events.on('crop:watered', () => this.cropBatches?.markDirty());
+            Events.on('crop:ready', () => this.cropBatches?.markDirty());
+            Events.on('crop:withered', () => this.cropBatches?.markDirty());
             Events.on('crop:harvested', (data) => this.onCropHarvested(data));
+            Events.on('inventory:full', () => {
+                this.toast?.error('المخزن ممتلئ! بِع بعض المحاصيل أو رقِّ السعة.');
+            });
 
             // أحداث سلسلة الإنتاج
             Events.on('production:started', (buildingId, recipeId) =>
@@ -612,6 +909,7 @@ class MyFarmApp {
                 console.warn('[PRODUCTION] ⚠️ المخزن ممتلئ — قم بترقية السعة!'));
             Events.on('production:building-selected', (hit) => this.focusOnBuilding(hit));
 
+            this.setBootProgress(100);
             this.initialized = true;
             this.hideLoading();
             this.start();
@@ -622,6 +920,7 @@ class MyFarmApp {
                 GameState,
                 Events,
                 FarmingSystem,
+                InventorySystem,
                 ProductionSystem,
                 ProductionYard: this.productionYard,
                 ProductionPanel: this.productionPanel
@@ -755,7 +1054,9 @@ class MyFarmApp {
         this.lights.sun.shadow.camera.far = 75;
         this.lights.sun.shadow.bias = -0.0004;
 
-        const d = 26;
+        // ظل ضيّق يتبع اللاعب (P5): مربع 16 وحدة بدل 26 يعطي
+        // دقة أعلى بنفس حجم الخريطة على الأجهزة المتوسطة.
+        const d = 16;
         this.lights.sun.shadow.camera.left = -d;
         this.lights.sun.shadow.camera.right = d;
         this.lights.sun.shadow.camera.top = d;
@@ -993,149 +1294,45 @@ class MyFarmApp {
         });
     }
 
+    /**
+     * الصخور والأعشاب على الأرض غير المجهزة — مواد/هندسة مشتركة (P5)
+     * حتى لا نتلف الموارد عند تجهيز الأرض.
+     */
     addWildProps(group) {
-        const rockGeo = new THREE.DodecahedronGeometry(0.28, 0);
-        const rockMat = new THREE.MeshStandardMaterial({ color: 0x888880, roughness: 0.95 });
-        const weedMat = new THREE.MeshStandardMaterial({ color: 0x768833, roughness: 0.9 });
+        if (!this._wildRockGeo) {
+            this._wildRockGeo = new THREE.DodecahedronGeometry(0.28, 0);
+            this._wildWeedGeo = new THREE.ConeGeometry(0.16, 0.42, 5);
+            this._wildRockMat = new THREE.MeshStandardMaterial({ color: 0x888880, roughness: 0.95 });
+            this._wildWeedMat = new THREE.MeshStandardMaterial({ color: 0x768833, roughness: 0.9 });
+        }
 
         const offsets = [[-1.1, -1.0], [1.1, 0.8], [-0.5, 1.1], [1.2, -1.0]];
         offsets.forEach(([ox, oz], idx) => {
             if (idx % 2 === 0) {
-                const rock = new THREE.Mesh(rockGeo, rockMat);
+                const rock = new THREE.Mesh(this._wildRockGeo, this._wildRockMat);
                 rock.position.set(ox, 0.15, oz);
                 rock.scale.set(1.2, 0.7, 1.0);
+                rock.castShadow = true;
                 group.add(rock);
             } else {
-                const weed = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.42, 5), weedMat);
+                const weed = new THREE.Mesh(this._wildWeedGeo, this._wildWeedMat);
                 weed.position.set(ox, 0.22, oz);
                 group.add(weed);
             }
         });
     }
 
+    /**
+     * إعادة رسم خانات الحقل — مع الدفعات المجمّعة لا يوجد mesh لكل خانة،
+     * بل تعليم "dirty" يعيد بناء InstancedMesh دفعة واحدة في الحلقة التالية.
+     */
     renderAllFieldSlots(fieldId) {
-        const slots = FarmingSystem.getOrCreateSlots(fieldId);
-        slots.forEach((slot, idx) => {
-            this.renderSlotCrop(fieldId, idx);
-        });
+        this.cropBatches?.markDirty();
     }
 
-    /**
-     * تجسيم المحصول الإجرائي الواقعي (Wheat / Corn / Carrot / Tomato)
-     */
+    /** متوافق مع نداءات main.js القديمة (خان واحدة = إعادة تعبئة الدفعة). */
     renderSlotCrop(fieldId, slotIndex) {
-        const entry = this.fieldMeshes.get(fieldId);
-        if (!entry) return;
-
-        const slots = FarmingSystem.getOrCreateSlots(fieldId);
-        const slot = slots[slotIndex];
-        if (!slot) return;
-
-        if (entry.slotMeshes.has(slotIndex)) {
-            const oldMesh = entry.slotMeshes.get(slotIndex);
-            entry.slotsGroup.remove(oldMesh);
-            entry.slotMeshes.delete(slotIndex);
-        }
-
-        const slotMeshGroup = new THREE.Group();
-        slotMeshGroup.position.set(slot.ox, 0, slot.oz);
-
-        // قاعدة ترابية مقسمة ومرطبة عند الري
-        const tileBed = new THREE.Mesh(
-            new THREE.BoxGeometry(1.9, 0.06, 1.9),
-            new THREE.MeshStandardMaterial({
-                color: slot.watered ? 0x3d2310 : 0x543217,
-                roughness: 0.95
-            })
-        );
-        tileBed.position.y = 0.03;
-        tileBed.receiveShadow = true;
-        slotMeshGroup.add(tileBed);
-
-        if (slot.state === 'growing' || slot.state === 'ready') {
-            const cropDef = CROPS_DEFINITIONS[slot.cropType] || CROPS_DEFINITIONS.wheat;
-            const now = Date.now();
-            const total = cropDef.growTime * 1000;
-            const elapsed = Math.max(0, total - (slot.readyAt - now));
-            const progress = Math.min(1, elapsed / total);
-
-            const isReady = slot.state === 'ready' || progress >= 1;
-            const type = slot.cropType;
-
-            if (isReady) {
-                // ================= STAGE 3: ناضج وجاهز للحصاد =================
-                if (type === 'wheat') {
-                    const wheatMat = new THREE.MeshStandardMaterial({ color: 0xffd54f, roughness: 0.4 });
-                    for (let i = 0; i < 5; i++) {
-                        const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.9, 5), wheatMat);
-                        const ear = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.35, 6), wheatMat);
-                        ear.position.y = 0.55;
-                        const wGroup = new THREE.Group();
-                        wGroup.add(stalk);
-                        wGroup.add(ear);
-                        const ang = (i / 5) * Math.PI * 2;
-                        wGroup.position.set(Math.cos(ang) * 0.4, 0.45, Math.sin(ang) * 0.4);
-                        wGroup.rotation.z = Math.sin(ang) * 0.15;
-                        slotMeshGroup.add(wGroup);
-                    }
-                } else if (type === 'corn') {
-                    const stalkMat = new THREE.MeshStandardMaterial({ color: 0x68c728, roughness: 0.6 });
-                    const cobMat = new THREE.MeshStandardMaterial({ color: 0xf5a623, roughness: 0.4 });
-                    const mainStalk = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 1.2, 6), stalkMat);
-                    mainStalk.position.y = 0.6;
-                    slotMeshGroup.add(mainStalk);
-                    const cob = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.09, 0.38, 7), cobMat);
-                    cob.position.set(0.14, 0.7, 0);
-                    cob.rotation.z = -0.3;
-                    slotMeshGroup.add(cob);
-                } else if (type === 'carrot') {
-                    const leafMat = new THREE.MeshStandardMaterial({ color: 0x4aa625, roughness: 0.7 });
-                    const carrotMat = new THREE.MeshStandardMaterial({ color: 0xff7043, roughness: 0.5 });
-                    const topCarrot = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.08, 0.28, 8), carrotMat);
-                    topCarrot.position.y = 0.14;
-                    slotMeshGroup.add(topCarrot);
-                    for (let i = 0; i < 4; i++) {
-                        const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.55, 4), leafMat);
-                        const a = (i / 4) * Math.PI * 2;
-                        leaf.position.set(Math.cos(a) * 0.12, 0.38, Math.sin(a) * 0.12);
-                        leaf.rotation.z = Math.sin(a) * 0.25;
-                        slotMeshGroup.add(leaf);
-                    }
-                } else {
-                    const bushMat = new THREE.MeshStandardMaterial({ color: 0x4caf50, roughness: 0.8 });
-                    const fruitMat = new THREE.MeshStandardMaterial({ color: 0xe53935, roughness: 0.3 });
-                    const bush = new THREE.Mesh(new THREE.DodecahedronGeometry(0.45, 1), bushMat);
-                    bush.position.y = 0.45;
-                    slotMeshGroup.add(bush);
-                    for (let i = 0; i < 3; i++) {
-                        const fruit = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), fruitMat);
-                        const ang = (i / 3) * Math.PI * 2;
-                        fruit.position.set(Math.cos(ang) * 0.35, 0.42, Math.sin(ang) * 0.35);
-                        slotMeshGroup.add(fruit);
-                    }
-                }
-            } else if (progress < 0.4) {
-                // ================= STAGE 1: بذرة / براعم خضراء =================
-                const sproutMat = new THREE.MeshStandardMaterial({ color: cropDef.colors.sprout });
-                for (let i = 0; i < 3; i++) {
-                    const sp = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.22, 4), sproutMat);
-                    sp.position.set((i - 1) * 0.32, 0.12, (i % 2 - 0.5) * 0.18);
-                    slotMeshGroup.add(sp);
-                }
-            } else {
-                // ================= STAGE 2: نبات نامي أخضر =================
-                const growMat = new THREE.MeshStandardMaterial({ color: cropDef.colors.growing });
-                for (let i = 0; i < 3; i++) {
-                    const st = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.55, 5), growMat);
-                    const ang = (i / 3) * Math.PI * 2;
-                    st.position.set(Math.cos(ang) * 0.25, 0.28, Math.sin(ang) * 0.25);
-                    slotMeshGroup.add(st);
-                }
-            }
-        }
-
-        entry.slotsGroup.add(slotMeshGroup);
-        entry.slotMeshes.set(slotIndex, slotMeshGroup);
+        this.cropBatches?.markDirty();
     }
 
     /* ========================================================
@@ -1185,41 +1382,188 @@ class MyFarmApp {
 
         if (target.type === 'field' && !target.data.purchased) {
             const modal = document.getElementById('purchase-modal');
-            if (modal) modal.classList.add('open');
+            if (modal) {
+                const badge = modal.querySelector('.price-badge span');
+                if (badge) badge.textContent = `💰 ${LAND_CONFIG.fieldPrice} كوينز`;
+                modal.classList.add('open');
+            }
             return;
         }
 
         if (target.type === 'field' && target.data.purchased && !target.data.prepared) {
             if (this.player) this.player.playToolSwing();
-            LandSystem.strikeFieldWithAxe(target.fieldId);
+            const res = LandSystem.strikeFieldWithAxe(target.fieldId);
+            if (!res.success) this.toast?.error('لا يمكن تجهيز هذه الأرض الآن');
+            return;
+        }
+
+        if (target.type === 'animal') {
+            this.interactWithAnimal(target);
             return;
         }
 
         if (target.type === 'slot') {
-            const slot = target.slot;
-            const selectedItem = this.hud?.getSelectedItem();
-
-            if (slot.state === 'empty') {
-                const cropType = selectedItem?.type === 'seed' ? selectedItem.cropType : 'wheat';
-                const success = this.hud?.consumeSelectedItemCount();
-                if (success) {
-                    FarmingSystem.plantSeed(target.fieldId, target.slotIndex, cropType);
-                    this.spawnFloatingFeedback(`🌱 تم بذر ${cropType}!`, '#86d942');
-                } else {
-                    this.spawnFloatingFeedback('اختر بذرة من الـ Hotbar أولاً!', '#ffb800');
-                }
-            } else if (slot.state === 'growing' && !slot.watered) {
-                FarmingSystem.waterSlot(target.fieldId, target.slotIndex);
-                this.renderSlotCrop(target.fieldId, target.slotIndex);
-                this.spawnFloatingFeedback('💧 تم ري المحصول!', '#00d2ff');
-            } else if (slot.state === 'ready') {
-                FarmingSystem.harvestSlot(target.fieldId, target.slotIndex);
-            }
+            this.interactWithSlot(target.fieldId, target.slotIndex, target.slot);
+            return;
         }
     }
 
-    checkNearTargets() {
+    /**
+     * الفعل الأساسي على خانة زراعية (P1):
+     *   فارغة + بذرة مختارة → زراعة (تُستهلك البذرة من المخزن)
+     *   نامية غير مرويّة     → ري
+     *   ناضجة               → حصاد إلى المخزن
+     *   ذابلة               → تنظيف
+     */
+    interactWithSlot(fieldId, slotIndex, slotRef) {
+        const slots = FarmingSystem.getOrCreateSlots(fieldId);
+        const slot = slots[slotIndex] || slotRef;
+        if (!slot) return;
+
+        if (slot.state === 'empty') {
+            const selected = this.hud?.getSelectedItem?.();
+            const cropType = selected?.type === 'seed' ? (selected.cropType || 'wheat') : null;
+
+            if (!cropType) {
+                this.toast?.error('اختر بذرة من شريط الأدوات أولًا 🌱');
+                return;
+            }
+
+            const seedId = CROPS_DEFINITIONS[cropType]?.seedId;
+            if (seedId && InventorySystem.count(seedId) <= 0) {
+                this.toast?.error(`لا توجد ${ITEMS[seedId]?.name || 'بذور'} في المخزن`);
+                return;
+            }
+
+            const res = FarmingSystem.plantSeed(fieldId, slotIndex, cropType);
+            if (!res.success) {
+                this.toast?.error(res.error || 'تعذّرت الزراعة');
+                return;
+            }
+
+            // عدّاد الـ Hotbar البصري يتبع المخزن
+            this.hud?.syncSeedCounts?.();
+            this.player?.playToolSwing?.();
+            this.spawnFloatingFeedback(`🌱 تم بذر ${CROPS_DEFINITIONS[cropType].name}!`, '#86d942');
+        } else if (slot.state === 'growing' && !slot.watered) {
+            const res = FarmingSystem.waterSlot(fieldId, slotIndex);
+            if (!res.success) {
+                this.toast?.error(res.error || 'تعذّر الري');
+                return;
+            }
+            this.spawnFloatingFeedback('💧 تم ري المحصول!', '#00d2ff');
+        } else if (slot.state === 'growing') {
+            const left = Math.max(0, Math.round((slot.readyAt - Date.now()) / 1000));
+            this.toast?.info(`⏳ ينمو… بقي ${left} ثانية`);
+        } else if (slot.state === 'ready') {
+            const res = FarmingSystem.harvestSlot(fieldId, slotIndex);
+            if (!res.success) {
+                this.toast?.error(res.error === 'inventory_full' ? 'المخزن ممتلئ!' : (res.error || 'تعذّر الحصاد'));
+                return;
+            }
+            this.player?.playToolSwing?.();
+        } else if (slot.state === 'withered') {
+            FarmingSystem.harvestSlot(fieldId, slotIndex);
+            this.spawnFloatingFeedback('🍂 أُزيل المحصول الذابل', '#c9a06b');
+        }
+
+        this.cropBatches?.markDirty();
+        this.checkNearTargets(true);
+    }
+
+    /* ========================================================
+       🐄 جسر الحيوانات — Animals.js (مرئي) ↔ AnimalSystem (منطق)
+       --------------------------------------------------------
+       كانت حيوانات الزينة مجرد مجسمات لا علاقة لها بالنظام.
+       الآن كل مجسم يسجّل حيوانًا مكافئًا في farm.animals عند
+       موضعه، ويصبح تفاعل اللاعب معه إطعامًا/جمعًا حقيقيين.
+       المرحلة التالية: استبدال المجسمات بنماذج مملوكة تُدار
+       بالكامل من AnimalSystem (شراء/طرد) وحذف build() الثابت.
+       ======================================================== */
+    linkFarmAnimals() {
+        const rigs = this.environment?.animals?.animals || [];
+        if (rigs.length === 0) return;
+
+        const SPECIES = { pig: 'cow', sheep: 'sheep', cow: 'cow', chicken: 'chicken', rooster: 'chicken' };
+        const animals = GameState.get('farm.animals') || [];
+        let linked = 0;
+
+        rigs.forEach((rig, idx) => {
+            const species = SPECIES[rig.type] || 'chicken';
+
+            // استعادة رابطة محفوظة مسبقًا
+            let entry = animals.find(a => a.rigIndex === idx);
+
+            if (!entry) {
+                const adopted = AnimalSystem.adopt(species, {
+                    x: rig.root.position.x,
+                    z: rig.root.position.z
+                });
+                if (!adopted.success) return;
+                entry = adopted.animal;
+                entry.rigIndex = idx;
+                const list = GameState.get('farm.animals') || [];
+                GameState.set('farm.animals', list.map(a => (a.id === entry.id ? { ...a, rigIndex: idx } : a)));
+            }
+
+            rig.farmAnimalId = entry.id;
+            rig.animalIcon = getAnimal(species)?.icon || '🐄';
+            linked++;
+        });
+
+        if (linked > 0) {
+            console.log(`[MY FARM] 🐄 ${linked} حيوانات مرتبطة بنظام الإنتاج الحيواني.`);
+        }
+    }
+
+    interactWithAnimal(target) {
+        const animalId = target.rig?.farmAnimalId;
+        if (!animalId) return;
+
+        const animal = AnimalSystem.getAnimalById(animalId);
+        if (!animal) return;
+
+        const def = getAnimal(animal.animalId);
+
+        if (animal.state === 'ready') {
+            const res = AnimalSystem.collect(animalId);
+            if (!res.success) {
+                this.toast?.error(res.error || 'تعذّر الجمع');
+                return;
+            }
+            const itemName = ITEMS[res.productId]?.name || res.productId;
+            this.toast?.success(`🧺 ${def?.icon || '🐄'} +${res.amount} ${itemName}`);
+            this.spawnFloatingFeedback(`🥚 +${res.amount} ${itemName}`, '#ffd54f');
+            return;
+        }
+
+        const feedId = def?.feed || 'wheat';
+        if (InventorySystem.count(feedId) <= 0) {
+            this.toast?.error(`ينقصك ${ITEMS[feedId]?.name || feedId} للإطعام`);
+            return;
+        }
+
+        const res = AnimalSystem.feed(animalId);
+        if (!res.success) {
+            this.toast?.error(res.error || 'تعذّر الإطعام');
+            return;
+        }
+        this.toast?.success(`${def?.icon || '🐄'} تم إطعام ${def?.name || 'الحيوان'} 🌾`);
+        this.spawnFloatingFeedback('🌾 شبعان!', '#86d942');
+    }
+
+    /**
+     * أقرب هدف تفاعل. يُنادى كل إطار لكنه يعمل بتردد ~8Hz لأن
+     * قراءة الحالة (GameState.get) تعمل نسخة عميقة — لا نريدها كل إطار.
+     * `force = true` يتخطى الجدولة (بعد زر تفاعل مثلًا).
+     */
+    checkNearTargets(force = false) {
         if (!this.player || !this.player.root) return;
+
+        const now = performance.now();
+        if (!force && now - (this._lastTargetCheck || 0) < 120) return;
+        this._lastTargetCheck = now;
+
         const playerPos = this.player.root.position;
 
         let closestTarget = null;
@@ -1236,24 +1580,50 @@ class MyFarmApp {
 
         for (const [fieldId, entry] of this.fieldMeshes.entries()) {
             const field = entry.fieldData;
-            const fieldCenter = new THREE.Vector3(field.posX, 0, field.posZ);
-            const distToField = playerPos.distanceTo(fieldCenter);
+            if (!field) continue;
+
+            const dx = playerPos.x - field.posX;
+            const dz = playerPos.z - field.posZ;
+            const distToField = Math.hypot(dx, dz);
 
             if (distToField > 5.5) continue;
 
-         ld;
+            // الأرض غير المشتراة أو المشتراة غير المجهزة تُستهدف كحقل كامل،
+            // والحقل الجاهز للزراعة تُستهدف خاناته individualًا.
+            if (!field.purchased || !field.prepared) {
+                if (distToField < minDist) {
+                    minDist = distToField;
                     closestTarget = { type: 'field', fieldId, data: field };
                 }
             } else {
                 const slots = FarmingSystem.getOrCreateSlots(fieldId);
-                slots.forEach((slot, sIdx) => {
-                    const slotWorldPos = new THREE.Vector3(field.posX + slot.ox, 0, field.posZ + slot.oz);
-                    const dSlot = playerPos.distanceTo(slotWorldPos);
+                for (let sIdx = 0; sIdx < slots.length; sIdx++) {
+                    const slot = slots[sIdx];
+                    const sdx = playerPos.x - (field.posX + slot.ox);
+                    const sdz = playerPos.z - (field.posZ + slot.oz);
+                    const dSlot = Math.hypot(sdx, sdz);
+
                     if (dSlot < 2.3 && dSlot < minDist) {
                         minDist = dSlot;
                         closestTarget = { type: 'slot', fieldId, slotIndex: sIdx, slot };
                     }
-                });
+                }
+            }
+        }
+
+        // 🐄 حيوانات المزرعة المرتبطة بـ AnimalSystem
+        const rigs = this.environment?.animals?.animals;
+        if (Array.isArray(rigs)) {
+            for (const rig of rigs) {
+                if (!rig.farmAnimalId || !rig.root) continue;
+                const adx = playerPos.x - rig.root.position.x;
+                const adz = playerPos.z - rig.root.position.z;
+                const d = Math.hypot(adx, adz);
+
+                if (d < 2.0 && d < minDist) {
+                    minDist = d;
+                    closestTarget = { type: 'animal', rig };
+                }
             }
         }
 
@@ -1278,7 +1648,7 @@ class MyFarmApp {
                 const f = closestTarget.data;
                 if (!f.purchased) {
                     promptTitle.textContent = '🌾 أرض جديدة متاح فتحها';
-                    promptDesc.textContent = 'السعر: 💰 100 كوينز';
+                    promptDesc.textContent = `السعر: 💰 ${LAND_CONFIG.fieldPrice} كوينز`;
                     promptBtn.textContent = 'شراء الأرض';
                     promptBtn.style.background = 'linear-gradient(180deg, #79d63c 0%, #46961a 100%)';
                 } else {
@@ -1287,11 +1657,20 @@ class MyFarmApp {
                     promptBtn.textContent = 'اضرب بالفأس 🪓';
                     promptBtn.style.background = 'linear-gradient(180deg, #ff9f1c 0%, #d87800 100%)';
                 }
+            } else if (closestTarget.type === 'animal') {
+                const animal = AnimalSystem.getAnimalById(closestTarget.rig.farmAnimalId);
+                const ready = animal?.state === 'ready';
+                promptTitle.textContent = ready ? '🧺 منتج جاهز!' : `${closestTarget.rig.animalIcon || '🐄'} ${animal?.animalId || 'حيوان'}`;
+                promptDesc.textContent = ready ? 'استلم المنتج من الحيوان' : `يحتاج طعامًا (${ITEMS[getAnimal(animal?.animalId)?.feed || 'wheat']?.name || 'قمح'})`;
+                promptBtn.textContent = ready ? 'جمع 🧺' : 'إطعام 🌾';
+                promptBtn.style.background = ready
+                    ? 'linear-gradient(180deg, #ffd54f 0%, #f5a623 100%)'
+                    : 'linear-gradient(180deg, #79d63c 0%, #46961a 100%)';
             } else if (closestTarget.type === 'slot') {
                 const s = closestTarget.slot;
                 if (s.state === 'empty') {
                     promptTitle.textContent = '🌱 خانة تربة جاهزة';
-                    promptDesc.textContent = 'اختر بذرة من الـ Hotbar للزراعة';
+                    promptDesc.textContent = 'اختر بذرة من شريط الأدوات للزراعة';
                     promptBtn.textContent = 'زراعة 🌱';
                     promptBtn.style.background = 'linear-gradient(180deg, #5dbcf0 0%, #1e88e5 100%)';
                 } else if (s.state === 'growing') {
@@ -1299,9 +1678,14 @@ class MyFarmApp {
                     promptDesc.textContent = s.watered ? 'انتظر اكتمال النضج' : 'قم بري المحصول لتسريع النمو';
                     promptBtn.textContent = s.watered ? 'ينمو...' : 'اسقِ ماء 💧';
                     promptBtn.style.background = 'linear-gradient(180deg, #00d2ff 0%, #0088cc 100%)';
+                } else if (s.state === 'withered') {
+                    promptTitle.textContent = '🍂 محصول ذابل';
+                    promptDesc.textContent = 'أزل المحصول لإعادة زراعة الخانة';
+                    promptBtn.textContent = 'تنظيف 🧹';
+                    promptBtn.style.background = 'linear-gradient(180deg, #b98a4f 0%, #8a5f2a 100%)';
                 } else if (s.state === 'ready') {
                     promptTitle.textContent = '🧺 المحصول ناضج وجاهز!';
-                    promptDesc.textContent = 'احصد لكسب العملات والـ XP';
+                    promptDesc.textContent = 'الحصاد يدخل المحصول للمخزن — ثم بِعه';
                     promptBtn.textContent = 'حصاد 🧺';
                     promptBtn.style.background = 'linear-gradient(180deg, #ffd54f 0%, #f5a623 100%)';
                 }
@@ -1355,8 +1739,15 @@ class MyFarmApp {
         entry.fieldData.prepared = true;
         entry.fieldData.state = 'empty';
 
-        while (entry.wildGroup.children.length > 0) {
-            entry.wildGroup.remove(entry.wildGroup.children[0]);
+        /*
+         * الصخور/الأعشاب البرية تستخدم هندسة ومواد مشتركة (مخمّنة في
+         * addWildProps) لذلك نُزيل الأطفال فقط — dispose يفسد بقية الحقول
+         * التي تشارك نفس المورد. الهندسة الخاصة وحدها تُتلف.
+         */
+        for (let i = entry.wildGroup.children.length - 1; i >= 0; i--) {
+            const child = entry.wildGroup.children[i];
+            entry.wildGroup.remove(child);
+            if (child.userData?.ownGeometry) child.geometry?.dispose();
         }
 
         entry.soilMesh.material.color.setHex(CONFIG.colors.soil);
@@ -1371,10 +1762,16 @@ class MyFarmApp {
         this.checkNearTargets();
     }
 
-    onCropHarvested({ fieldId, slotIndex, crop, coins, xp }) {
-        this.renderSlotCrop(fieldId, slotIndex);
-        this.spawnFloatingFeedback(`🧺 تم حصاد ${crop.name}! (+${coins} 💰, +${xp} XP)`, '#4ade80');
-        this.checkNearTargets();
+    onCropHarvested({ fieldId, slotIndex, crop, amount = 1, coins = 0, xp = 0, itemId }) {
+        this.cropBatches?.markDirty();
+
+        if (crop) {
+            const extra = coins > 0 ? ` (+${coins} 💰)` : '';
+            this.spawnFloatingFeedback(`🧺 +${amount} ${crop.name} في المخزن (+${xp} XP)${extra}`, '#4ade80');
+        }
+
+        this.hud?.syncSeedCounts?.();
+        this.checkNearTargets(true);
     }
 
     onLandPurchaseFailed({ reason }) {
@@ -1587,10 +1984,86 @@ class MyFarmApp {
         requestAnimationFrame(this._boundLoop);
     }
 
+    /* ============================================================
+       🌗 دورة النهار/الليل (P2)
+       TimeManager يدير الساعة (يوم = 12 دقيقة حقيقية)، ونحن نحرّك
+       الشمس ونمزج لون السماء/الضباب ونحدّث ساعة الـ HUD.
+       العمل رخيص لكنّه لا يحدث إلا عند تغيّر الدقيقة داخل اللعبة.
+       ============================================================ */
+    applyDayNight() {
+        if (!this.lights?.sun || !this.scene || typeof Time.getClock !== 'function') return;
+
+        const clock = Time.getClock();
+        const key = clock.hours * 60 + clock.minutes;
+        if (key === this._dayNightKey) return;
+        this._dayNightKey = key;
+
+        const hourFloat = clock.hours + clock.minutes / 60;
+        // ارتفاع الشمس: 6ص أفق ← 12ظ رأسًا ← 6م أفق ← ليل تحت الأفق
+        const elevation = Math.sin(((hourFloat - 6) / 12) * Math.PI);
+        const dayFactor = Math.min(1, Math.max(0, (elevation - 0.08) / 0.5));
+        const duskFactor = Math.min(1, Math.max(0, (elevation + 0.14) / 0.30));
+
+        // --- الشمس تدور حول المزرعة ---
+        const radius = 46;
+        const angle = ((hourFloat - 6) / 12) * Math.PI;
+        const px = this.player?.root?.position?.x || 0;
+        const pz = this.player?.root?.position?.z || 0;
+        this.lights.sun.position.set(
+            px + Math.cos(angle) * radius * 0.6,
+            Math.max(-14, elevation * radius),
+            pz + Math.sin(angle) * radius * 0.35
+        );
+        this.lights.sun.intensity = 0.18 + dayFactor * 1.95;
+        this.lights.sun.color.setHex(dayFactor > 0.55 ? 0xfff6e4 : 0xffb066);
+
+        if (this.lights.ambient) {
+            this.lights.ambient.intensity = 0.42 + dayFactor * 1.0;
+        }
+        if (this.lights.fill) {
+            this.lights.fill.intensity = 0.12 + (1 - dayFactor) * 0.35;
+        }
+
+        // --- لون السماء: ليل ← غروب ← نهار ---
+        if (!this._skyNight) {
+            this._skyNight = new THREE.Color(0x132338);
+            this._skyDusk = new THREE.Color(0xf59e42);
+            this._skyDay = new THREE.Color(0x7bc4f0);
+            this._skyScratch = new THREE.Color();
+        }
+
+        this._skyScratch.copy(this._skyNight).lerp(this._skyDusk, duskFactor);
+        this._skyScratch.lerp(this._skyDay, dayFactor);
+
+        if (this.scene.background && this.scene.background.isColor) {
+            this.scene.background.copy(this._skyScratch);
+        } else {
+            this.scene.background = this._skyScratch.clone();
+        }
+
+        // --- ضباب أكثف ليلًا ---
+        if (this.scene.fog) {
+            this.scene.fog.color.copy(this._skyScratch);
+            this.scene.fog.density = 0.012 + (1 - dayFactor) * 0.022;
+        }
+
+        // --- ساعة الـ HUD + رمز الوقت ---
+        this.hud?.updateClock?.(
+            typeof Time.getClockLabel === 'function' ? Time.getClockLabel() : '',
+            typeof Time.getPhaseIcon === 'function' ? Time.getPhaseIcon() : '☀️',
+            clock.day,
+            clock.season
+        );
+    }
+
     update(delta) {
+        const elapsed = this.clock.getElapsedTime();
+
         FarmingSystem.updateGrowth();
-        this.productionYard?.update(delta, this.clock.getElapsedTime());
-        this.environment?.update(delta, this.clock.getElapsedTime());
+        this.cropBatches?.update(delta, elapsed, this.fieldMeshes);
+        this.applyDayNight();
+        this.productionYard?.update(delta, elapsed);
+        this.environment?.update(delta, elapsed);
 
         this.clouds.forEach((cloud) => {
             cloud.position.x += delta * 0.8;
@@ -1687,12 +2160,18 @@ class MyFarmApp {
     hideLoading() {
         const loadingScreen = document.getElementById('loading-screen');
         if (loadingScreen) {
-            loadingScreen.classList.add('fade-out');
+            // نملأ الشريط ثم نخفي — حتى لا يبدو التحميل مقطوعًا
+            const fill = document.getElementById('loading-fill');
+            const pct = document.getElementById('loading-pct');
+            if (fill) fill.style.width = '100%';
+            if (pct) pct.textContent = '100%';
+
+            setTimeout(() => loadingScreen.classList.add('fade-out'), 180);
             setTimeout(() => {
                 if (loadingScreen && loadingScreen.parentNode) {
                     loadingScreen.parentNode.removeChild(loadingScreen);
                 }
-            }, 450);
+            }, 620);
         }
     }
 

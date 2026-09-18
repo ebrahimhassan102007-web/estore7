@@ -224,18 +224,19 @@
       100% { opacity: 0; transform: translateY(-90px) scale(0.85); }
     }
 
-    /* Loading Screen */
+    /* ============================================================
+       شاشة التحميل — بوستر رسمي full-bleed + شريط تقدّم رفيع
+       (البديل عن شاشة الإيموجي، ومطابق لهوية الخشب/الذهبي)
+       ============================================================ */
     #loading-screen {
       position: fixed;
       inset: 0;
       z-index: 10000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      background: linear-gradient(180deg, #5dbcf0 0%, #dff3ff 50%, #62a832 100%);
+      display: block;
+      overflow: hidden;
+      background: #1b2d16;
       color: #fff;
-      transition: opacity 0.4s ease, visibility 0.4s ease;
+      transition: opacity 0.45s ease, visibility 0.45s ease;
     }
 
     #loading-screen.fade-out {
@@ -244,61 +245,117 @@
       pointer-events: none !important;
     }
 
-    #loading-screen .loading-card {
-      text-align: center;
-      padding: 30px 24px;
-      border-radius: 24px;
-      background: rgba(35, 65, 30, 0.45);
-      backdrop-filter: blur(10px);
-      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
-      max-width: 90vw;
-      width: 300px;
-    }
-
-    #loading-screen .loading-icon {
-      font-size: 50px;
-      margin-bottom: 10px;
-      animation: bounce 1.4s infinite ease-in-out;
-    }
-
-    #loading-screen h1 {
-      margin: 0 0 6px;
-      font-size: 28px;
-      font-weight: 900;
-    }
-
-    #loading-screen p {
-      margin: 0;
-      font-size: 13px;
-      opacity: 0.95;
-    }
-
-    #loading-screen .loading-bar {
+    #loading-screen .boot-art {
+      position: absolute;
+      inset: 0;
       width: 100%;
-      height: 8px;
-      margin-top: 20px;
+      height: 100%;
+      object-fit: cover;
+      object-position: center 40%;
+      /* لا نمنع الانتظار: الصورة تُخفى إن فشلت فيظهر الغامق فقط */
+      animation: bootArtIn 0.55s ease both;
+    }
+
+    #loading-screen .boot-scrim {
+      position: absolute;
+      inset: auto 0 0 0;
+      height: min(46vh, 300px);
+      background: linear-gradient(180deg, rgba(10, 18, 8, 0) 0%, rgba(10, 18, 8, 0.72) 58%, rgba(6, 12, 5, 0.92) 100%);
+      pointer-events: none;
+    }
+
+    #loading-screen .boot-panel {
+      position: absolute;
+      inset: auto max(14px, env(safe-area-inset-right)) max(26px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+      text-align: center;
+      padding: 14px 16px 16px;
+      border-radius: 20px;
+      border: 3px solid #814c1e;
+      outline: 1px solid rgba(252, 237, 201, 0.45);
+      background: linear-gradient(180deg, rgba(66, 38, 14, 0.82) 0%, rgba(37, 22, 8, 0.88) 100%);
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
+      max-width: 520px;
+      margin-inline: auto;
+    }
+
+    #loading-screen .boot-title {
+      margin: 0 0 2px;
+      font-size: clamp(22px, 6vw, 34px);
+      font-weight: 900;
+      letter-spacing: 0.5px;
+      color: #fcedc9;
+      text-shadow: 0 2px 0 #4a280c, 0 6px 18px rgba(0, 0, 0, 0.5);
+    }
+
+    #loading-screen .boot-subtitle {
+      margin: 0 0 12px;
+      font-size: clamp(11px, 3.2vw, 13px);
+      font-weight: 700;
+      color: #ffbe44;
+      letter-spacing: 3px;
+    }
+
+    /* شريط رفيع كما في المواصفات */
+    #loading-screen .boot-track {
+      position: relative;
+      width: 100%;
+      height: 6px;
       overflow: hidden;
       border-radius: 999px;
-      background: rgba(255, 255, 255, 0.35);
+      background: rgba(255, 255, 255, 0.18);
+      border: 1px solid rgba(252, 237, 201, 0.35);
     }
 
-    #loading-screen .loading-fill {
-      width: 0%;
-      height: 100%;
+    #loading-screen .boot-fill {
+      position: absolute;
+      inset-block: 0;
+      inset-inline-start: 0;
+      width: 8%;
       border-radius: inherit;
-      background: #ffd54f;
-      animation: loadProgress 1.0s ease forwards;
+      background: linear-gradient(90deg, #ffbe44 0%, #ffe9a8 55%, #ffbe44 100%);
+      transition: width 0.22s ease;
     }
 
-    @keyframes bounce {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-10px); }
+    #loading-screen .boot-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      color: rgba(252, 237, 201, 0.86);
     }
 
-    @keyframes loadProgress {
-      0% { width: 10%; }
-      50% { width: 60%; }
-      100% { width: 100%; }
+    #loading-screen .boot-tip {
+      min-height: 1.2em;
+      flex: 1;
+      text-align: start;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #loading-screen .boot-pct {
+      direction: ltr;
+      color: #ffbe44;
+    }
+
+    @keyframes bootArtIn {
+      from { opacity: 0; transform: scale(1.04); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+
+    /* البوستر مفقود؟ لا نترك شاشة بيضاء */
+    #loading-screen.no-art {
+      background:
+        radial-gradient(120% 80% at 50% 0%, #5dbcf0 0%, #2f7fb8 45%, #1b4d24 100%);
+    }
+
+    #loading-screen.no-art .boot-art { display: none; }
+
+    @media (prefers-reduced-motion: reduce) {
+      #loading-screen .boot-art { animation: none; }
+      #loading-screen .boot-fill { transition: none; }
     }
   </style>
 
@@ -340,18 +397,90 @@
       </div>
     </div>
 
-    <!-- Loading Screen -->
-    <div id="loading-screen">
-      <div class="loading-card">
-        <div class="loading-icon">🌾</div>
-        <h1>MY FARM 3D</h1>
-        <p>جاري بناء عالم المزرعة والأراضي...</p>
-        <div class="loading-bar">
-          <div class="loading-fill"></div>
+    <!-- Loading Screen — بوستر مزرعتي + تقدّم حقيقي من main.js -->
+    <div id="loading-screen" role="status" aria-live="polite" aria-label="جارِ تحميل المزرعة">
+      <img class="boot-art" src="./my-farm-loading.jpg" alt="مزرعتي — MY FARM 3D"
+           fetchpriority="high" decoding="async"
+           onerror="this.closest('#loading-screen').classList.add('no-art')">
+      <div class="boot-scrim"></div>
+      <div class="boot-panel">
+        <h1 class="boot-title">مزرعتي</h1>
+        <p class="boot-subtitle">MY FARM 3D</p>
+        <div class="boot-track">
+          <div class="boot-fill" id="loading-fill"></div>
+        </div>
+        <div class="boot-meta">
+          <span class="boot-tip" id="loading-tip">جارِ تجهيز الحقول…</span>
+          <span class="boot-pct" id="loading-pct">8%</span>
         </div>
       </div>
     </div>
   </div>
+
+  <!--
+    شاشة التحميل: تقدّم مصعّد صناعيًا حتى يعلن main.js جاهزيته
+    (يكتب data-farm-boot على <html> عند كل مرحلة ثم يُخفى الشاشة).
+  -->
+  <script>
+    (function () {
+      var fill = document.getElementById('loading-fill');
+      var pct = document.getElementById('loading-pct');
+      var tip = document.getElementById('loading-tip');
+      if (!fill || !pct) return;
+
+      var TIPS = [
+        'اسقِ المحصول لينمو أسرع 💧',
+        'اضرب الفأس 4 مرات لتجهيز الأرض 🪓',
+        'اطحن القمح في الطاحونة ثم اخبزه 🍞',
+        'الحصاد يدخل المخزن — البيع يجلب الكوينز 💰',
+        'أطعم حيواناتك لتجمع البيض والحليب 🥚',
+        'افتح أراضٍ جديدة حول المزرعة 🗺️'
+      ];
+
+      var progress = 8;
+      var tipIndex = 0;
+      var screen = document.getElementById('loading-screen');
+      var tick = 0;
+      var tips = 0;
+
+      function stop() {
+        clearInterval(tick);
+        clearInterval(tips);
+      }
+
+      function paint(value) {
+        fill.style.width = value + '%';
+        pct.textContent = Math.round(value) + '%';
+      }
+
+      tick = setInterval(function () {
+        //main.js يكتب data-farm-boot بالنسب، ويضيف fade-out عند الجاهزية
+        var announced = parseInt(document.documentElement.getAttribute('data-farm-boot') || '0', 10);
+        var goal = announced > progress ? announced : Math.min(88, progress + 3);
+        progress = Math.min(100, progress + Math.max(0.6, (goal - progress) * 0.35));
+        paint(progress);
+
+        if (!screen || screen.classList.contains('fade-out')) {
+          paint(100);
+          stop();
+        } else if (progress >= 99.5) {
+          paint(100);
+          stop();
+        }
+      }, 140);
+
+      tips = setInterval(function () {
+        if (!tip || tipIndex >= TIPS.length * 4) return;
+        tipIndex = (tipIndex + 1) % TIPS.length;
+        tip.style.opacity = 0;
+        setTimeout(function () {
+          tip.textContent = TIPS[tipIndex];
+          tip.style.transition = 'opacity .3s ease';
+          tip.style.opacity = 1;
+        }, 160);
+      }, 2600);
+    })();
+  </script>
 
   <script type="module" src="./js/main.js"></script>
 </body>

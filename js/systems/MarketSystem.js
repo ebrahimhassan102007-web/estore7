@@ -438,6 +438,32 @@ class MarketSystemService {
                     listing.amount
                 );
 
+                /*
+                 * Quest line "sell" listens to `crop:sold`; a market sale
+                 * must count exactly like an inventory sale.
+                 */
+                const soldDef = ITEMS[listing.itemId];
+
+                if (soldDef && soldDef.category !== 'seed') {
+                    Events.emit(
+                        'crop:sold',
+                        listing.amount,
+                        {
+                            itemId: listing.itemId,
+                            coins: earnings,
+                            via: 'market'
+                        }
+                    );
+                }
+
+                const stats =
+                    GameState.get('stats') || {};
+
+                GameState.set(
+                    'stats.totalSales',
+                    (stats.totalSales || 0) + earnings
+                );
+
                 continue;
             }
 

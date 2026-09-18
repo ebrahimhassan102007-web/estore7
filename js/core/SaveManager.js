@@ -15,8 +15,29 @@ const SAVE_CONFIG = Object.freeze({
     storeName: 'saves',
     saveId: 'main_save',
     version: 2,
-    autoSaveInterval: 15000 // 15 ثانية
+    autoSaveInterval: 20000 // ~20 ثانية (المطلوب في المواصفات)
 });
+
+/*
+ * خطوات ترقية اختيارية: MIGRATIONS[إصدار الهدف]
+ * كل خطوة تستقبل كائن الحفظ وترجّله.
+ */
+const MIGRATIONS = {
+    2: (data) => {
+        // مزارع قديمة: الحقول تحتاج posX/posZ لعرضها في العالم
+        const fields = LAND_FIELDS_FALLBACK;
+        if (data && Array.isArray(data.farm?.tiles) === false && data.farm) {
+            data.farm.tiles = fields;
+        }
+        return data;
+    }
+};
+
+/** 2 حقلان مجانيان في المنتصف — نفس LAND_CONFIG.fieldsLayout (base: true). */
+const LAND_FIELDS_FALLBACK = [
+    { id: 'field_center_left', posX: -3.8, posZ: -3.5, price: 100, purchased: true, prepared: true, prepProgress: 100, state: 'empty' },
+    { id: 'field_center_right', posX: 3.8, posZ: -3.5, price: 100, purchased: true, prepared: true, prepProgress: 100, state: 'empty' }
+];
 
 class SaveManagerService {
     constructor() {
@@ -30,7 +51,26 @@ class SaveManagerService {
         this._lifecycleHandlersInstalled = false;
         this._lastSaveTime = 0;
         this._saveInProgress = false;
+        this._trailingTimer = null;
+        this._rev = 0;
         this._isClosing = false;
+    }
+
+    /**
+     * إعادة محاولة الحفظ بعد انتهاء الحفظ الجاري — تمنع ضياع آخر
+     * ثوانٍ من التقدّم (حصاد ثم تحديث الصفحة فورًا).
+     */
+    _scheduleTrailingSave() {
+        this._pendingSave = true;
+        this._trailingSaves = (this._trailingSaves || 0);
+        if (this._trailingTimer) return;
+        this._trailingTimer = setTimeout(() => {
+            this._trailingTimer = null;
+            if (this._pendingSave) {
+                this._pendingSave = false;
+                this.save();
+            }
+        }, 120);
     }
 
     /* ========================================================
@@ -136,15 +176,27 @@ class SaveManagerService {
     /* ========================================================
        SAVE IMPLEMENTATION
        ======================================================== */
+    /**
+     * الحفظ المطلوب أثناء وجود حفظٍ جارٍ كان يُسقط اللقطة الأحدث
+     * (الحفظ القديم يصفّر _pendingSave عند انتهائه) — لذلك نتتبّع
+     * رقمًا تسلسليًا للتغييرات ونعيد المحاولة إذا تغيّرت الحالة أثناء
+     * الكتابة. ونلتقط اللقطة بعد تجهيز القاعدة لنكتب أدقّ حالة ممكنة.
+     */
     async save() {
+        const revAtEntry = ++this._rev;
+
         if (this._saveInProgress) {
-            this._pendingSave = true;
+            this._scheduleTrailingSave();
             return false;
         }
 
         this._saveInProgress = true;
 
         try {
+            // محاولة الحفظ في IndexedDB أولاً — التجهيز قبل الالتقاط
+            let idbSuccess = false;
+            await this.init();
+
             const snapshot = GameState.snapshot();
             const jsonData = JSON.stringify(snapshot);
             const meta = {
@@ -158,10 +210,6 @@ class SaveManagerService {
                 data: snapshot
             };
             const jsonPayload = JSON.stringify(payload);
-
-            // محاولة الحفظ في IndexedDB أولاً
-            let idbSuccess = false;
-            await this.init();
 
             if (this._useIndexedDB && this._db && !this._isClosing) {
                 try {
@@ -185,7 +233,13 @@ class SaveManagerService {
             }
 
             this._lastSaveTime = meta.timestamp;
-            this._pendingSave = false;
+
+            // تغيّرت الحالة أثناء الكتابة؟ نحفظ مجددًا حتى لا يضيع شيء
+            if (this._rev !== revAtEntry) {
+                this._scheduleTrailingSave();
+            } else {
+                this._pendingSave = false;
+            }
 
             GameState.set('stats.lastSave', meta.timestamp);
             Events.emit('save:success', meta);
@@ -195,6 +249,7 @@ class SaveManagerService {
             const msg = error?.message || error?.name || String(error);
             console.error(`[SaveManager] Save completely failed: ${msg}`);
             this._pendingSave = true;
+            this._scheduleTrailingSave();
             Events.emit('save:error', error);
             return false;
         } finally {
@@ -252,28 +307,29 @@ class SaveManagerService {
             await this.init();
             let jsonString = null;
 
-            // 1. محاولة القراءة من IndexedDB
+            // 1. IndexedDB
+            let fromIdb = null;
             if (this._useIndexedDB && this._db && !this._isClosing) {
                 try {
-                    jsonString = await this._loadFromIndexedDB();
-                    if (jsonString) {
-                        console.log('[SaveManager] Save data loaded from IndexedDB.');
-                    }
+                    fromIdb = await this._loadFromIndexedDB();
                 } catch (idbLoadErr) {
                     console.warn('[SaveManager] IndexedDB load failed, trying localStorage fallback...', idbLoadErr);
                 }
             }
 
-            // 2. Fallback إلى localStorage إذا لم توجد بيانات في IndexedDB
-            if (!jsonString) {
-                try {
-                    jsonString = localStorage.getItem(SAVE_CONFIG.key);
-                    if (jsonString) {
-                        console.log('[SaveManager] Save data loaded from localStorage.');
-                    }
-                } catch (lsErr) {
-                    console.warn('[SaveManager] localStorage read failed:', lsErr);
-                }
+            // 2. localStorage — على iOS قد يكون الأحدث لأن الحفظ المتزامن
+            //    عند قبل unload يكتب هنا فقط (IndexedDB لا يكمل أثناء الإغلاق).
+            let fromLs = null;
+            try {
+                fromLs = localStorage.getItem(SAVE_CONFIG.key);
+            } catch (lsErr) {
+                console.warn('[SaveManager] localStorage read failed:', lsErr);
+            }
+
+            jsonString = this._newestPayload(fromIdb, fromLs);
+
+            if (jsonString) {
+                console.log('[SaveManager] Save data loaded.');
             }
 
             if (!jsonString) {
@@ -308,6 +364,13 @@ class SaveManagerService {
                 Events.emit('save:migrated');
             }
 
+            /*
+             * حتى مع تطابق الإصدار قد تضيف نسخة جديدة مفاتيح غير موجودة
+             * في الحفظ (مثل time.day أو farm.maxAnimals). نملأ الناقص من
+             * الحالة الافتراضية دون أي مساس بتقدّم اللاعب.
+             */
+            payload.data = this._migrate(payload.data, payload.meta.version);
+
             GameState.restore(payload.data);
             this._lastSaveTime = payload.meta.timestamp;
             Events.emit('save:loaded', payload.meta);
@@ -318,6 +381,25 @@ class SaveManagerService {
             Events.emit('save:error', error);
             return false;
         }
+    }
+
+    /** يقارن meta.timestamp بين مخزنين ويرجع الأحدث (أو أيهما صالح). */
+    _newestPayload(a, b) {
+        const stamp = (raw) => {
+            if (!raw) return -1;
+            try {
+                const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                return Number(parsed?.meta?.timestamp) || -1;
+            } catch (e) {
+                return -1;
+            }
+        };
+
+        const ta = stamp(a);
+        const tb = stamp(b);
+
+        if (ta < 0 && tb < 0) return a || b || null;
+        return tb > ta ? b : a;
     }
 
     _loadFromIndexedDB() {
@@ -397,15 +479,18 @@ class SaveManagerService {
 
     markDirty() {
         this._pendingSave = true;
+        this._rev = (this._rev || 0) + 1;
     }
 
     _installLifecycleHandlers() {
         if (this._lifecycleHandlersInstalled) return;
         this._lifecycleHandlersInstalled = true;
 
-        window.addEventListener('beforeunload', () => {
-            this._saveToLocalStorageSync();
-        });
+        const flush = () => this._saveToLocalStorageSync();
+
+        window.addEventListener('beforeunload', flush);
+        // iOS Safari لا يضمن beforeunload — pagehide هو الموثوق على الجوال
+        window.addEventListener('pagehide', flush);
 
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
@@ -456,8 +541,61 @@ class SaveManagerService {
         };
     }
 
-    _migrate(data, fromVersion) {
-        return data && typeof data === 'object' ? data : {};
+    /**
+     * ترقية الحفظ القديم إلى الشكل الحالي:
+     *  1) خطوات ترقية مخصّصة لكل إصدار (حاليًا: ملء الحقول للمزارع القديمة).
+     *  2) دمج عميق مع الحالة الافتراضية — المفاتيح الناقصة تُضاف،
+     *     وقيم اللاعب المحفوظة تنتصر دائمًا (لا نعيد ضبط تقدّم أحد).
+     */
+    _migrate(data, fromVersion = 0) {
+        let source = (data && typeof data === 'object') ? data : {};
+
+        try {
+            for (let v = fromVersion; v < SAVE_CONFIG.version; v++) {
+                const step = MIGRATIONS[v + 1];
+                if (typeof step === 'function') {
+                    source = step(source) || source;
+                }
+            }
+        } catch (err) {
+            console.warn('[SaveManager] Migration step failed, keeping saved data as-is:', err);
+        }
+
+        return this._fillDefaults(GameState.getDefaultState(), source);
+    }
+
+    /**
+     * Merge defaults <- saved.  Objects recurse, arrays & scalars come
+     * from the save (an empty saved array is still a valid player choice).
+     */
+    _fillDefaults(defaults, saved) {
+        if (!defaults || typeof defaults !== 'object' || Array.isArray(defaults)) {
+            return saved === undefined ? defaults : saved;
+        }
+        if (!saved || typeof saved !== 'object' || Array.isArray(saved)) {
+            return saved === undefined ? defaults : { ...defaults, ...(saved || {}) };
+        }
+
+        const out = { ...saved };
+
+        for (const key of Object.keys(defaults)) {
+            const defVal = defaults[key];
+            const curVal = out[key];
+
+            if (curVal === undefined) {
+                out[key] = defVal;
+                continue;
+            }
+
+            if (
+                defVal && typeof defVal === 'object' && !Array.isArray(defVal) &&
+                curVal && typeof curVal === 'object' && !Array.isArray(curVal)
+            ) {
+                out[key] = this._fillDefaults(defVal, curVal);
+            }
+        }
+
+        return out;
     }
 
     _checksum(str) {

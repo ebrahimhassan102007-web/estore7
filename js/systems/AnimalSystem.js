@@ -30,13 +30,19 @@ class AnimalSystemService {
     // ADD ANIMAL
     // =========================================================
 
-    addAnimal(animalId) {
+    /**
+     * @param {string} animalId  معرّف النوع في GameData.ANIMALS
+     * @param {{x?:number,z?:number}} [position] موضع عالم اختياري —
+     *        يُستخدم لربط الحيوان بالنموذج ثلاثي الأبعاد في Animals.js
+     *        (البيانات بدونها تبقى كما كانت تمامًا).
+     */
+    addAnimal(animalId, position = null) {
         const animalData = getAnimal(animalId);
 
         if (!animalData) {
             return {
                 success: false,
-                error: 'Invalid animal'
+                error: 'حيوان غير معروف'
             };
         }
 
@@ -58,20 +64,32 @@ class AnimalSystemService {
         if (animals.length >= maxAnimals) {
             return {
                 success: false,
-                error: 'Animal limit reached'
+                error: 'وصلت للحد الأقصى من الحيوانات'
             };
         }
 
         const coins = GameState.get('player.coins');
         const gems = GameState.get('player.gems');
 
-        const cost = animalData.cost || 0;
-        const gemsCost = animalData.gems || 0;
+        /*
+         * ANIMALS[].cost هو { coins, gems } مثل BUILDINGS —
+         * القراءته كرقم تجعل الشرط دائمًا خاطئًا.
+         */
+        const costEntry = animalData.cost;
+        const cost =
+            typeof costEntry === 'number'
+                ? costEntry
+                : (Number(costEntry?.coins) || 0);
+
+        const gemsCost =
+            (typeof costEntry === 'object' && costEntry)
+                ? (Number(costEntry.gems) || 0)
+                : (Number(animalData.gems) || 0);
 
         if (coins < cost || gems < gemsCost) {
             return {
                 success: false,
-                error: 'Not enough resources'
+                error: `تحتاج إلى ${cost} عملة${gemsCost ? ` و${gemsCost} جوهرة` : ''}`
             };
         }
 
@@ -90,8 +108,9 @@ class AnimalSystemService {
             animalId,
             state: 'hungry',
             hunger: 100,
-            x: 100 + Math.random() * 500,
-            y: 100 + Math.random() * 300,
+            x: Number.isFinite(position?.x) ? position.x : 100 + Math.random() * 500,
+            y: Number.isFinite(position?.y) ? position.y : 100 + Math.random() * 300,
+            z: Number.isFinite(position?.z) ? position.z : 0,
             lastFedAt: Date.now(),
             lastProductAt: 0,
             productReadyAt: 0,
@@ -116,6 +135,65 @@ class AnimalSystemService {
     }
 
     // =========================================================
+    // ADOPT — تسجبل حيوان موجود في العالم (بدون سعر/مستوى)
+    // =========================================================
+
+    /**
+     * يضيف حيوانًا لحالة المزرعة دون خصم عملات أو فحص المستوى.
+     * يُستخدم لربط نماذج Animals.js ثلاثية الأبعاد بالنظام، فتصبح
+     * الحيوانات التي تراها على الشاشة هي نفسها القابلة للإطعام/الجمع.
+     * @returns {{success:boolean, animal?:object, reason?:string}}
+     */
+    adopt(animalId, position = null) {
+        const animalData = getAnimal(animalId);
+
+        if (!animalData) {
+            return { success: false, reason: 'unknown_species' };
+        }
+
+        const animals = GameState.get('farm.animals') || [];
+
+        const existing = animals.find(
+            a => a.animalId === animalId &&
+                 Math.abs((a.x ?? 1e9) - (position?.x ?? -1e9)) < 0.01 &&
+                 Math.abs((a.z ?? 1e9) - (position?.z ?? -1e9)) < 0.01
+        );
+
+        if (existing) {
+            return { success: true, animal: existing, reused: true };
+        }
+
+        const maxAnimals =
+            GameState.get('farm.maxAnimals') || 20;
+
+        if (animals.length >= maxAnimals) {
+            return { success: false, reason: 'limit_reached' };
+        }
+
+        const animal = {
+            id: uuid(),
+            animalId,
+            state: 'hungry',
+            hunger: 60,
+            x: Number.isFinite(position?.x) ? position.x : 0,
+            z: Number.isFinite(position?.z) ? position.z : 0,
+            y: 0,
+            lastFedAt: 0,
+            lastProductAt: 0,
+            productReadyAt: 0,
+            totalCollected: 0,
+            adopted: true,
+            createdAt: Date.now()
+        };
+
+        GameState.push('farm.animals', animal);
+
+        Events.emit('animal:added', animal);
+
+        return { success: true, animal };
+    }
+
+    // =========================================================
     // REMOVE ANIMAL
     // =========================================================
 
@@ -129,7 +207,7 @@ class AnimalSystemService {
         if (index === -1) {
             return {
                 success: false,
-                error: 'Animal not found'
+                error: 'الحيوان غير موجود'
             };
         }
 
@@ -169,7 +247,7 @@ class AnimalSystemService {
         if (!animal) {
             return {
                 success: false,
-                error: 'Animal not found'
+                error: 'الحيوان غير موجود'
             };
         }
 
@@ -180,7 +258,7 @@ class AnimalSystemService {
         if (!animalData) {
             return {
                 success: false,
-                error: 'Animal data not found'
+                error: 'بيانات الحيوان غير متوفرة'
             };
         }
 
@@ -200,7 +278,7 @@ class AnimalSystemService {
         ) {
             return {
                 success: false,
-                error: `Need ${feedId}`
+                error: `ينقصك ${ITEMS[feedId]?.name || feedId} للإطعام`
             };
         }
 
@@ -262,7 +340,7 @@ class AnimalSystemService {
         if (!animal) {
             return {
                 success: false,
-                error: 'Animal not found'
+                error: 'الحيوان غير موجود'
             };
         }
 
@@ -273,7 +351,7 @@ class AnimalSystemService {
         if (!animalData) {
             return {
                 success: false,
-                error: 'Animal data not found'
+                error: 'بيانات الحيوان غير متوفرة'
             };
         }
 
@@ -283,7 +361,7 @@ class AnimalSystemService {
         ) {
             return {
                 success: false,
-                error: 'Product not ready'
+                error: 'المنتج غير جاهز بعد'
             };
         }
 
@@ -294,7 +372,7 @@ class AnimalSystemService {
         if (!productId) {
             return {
                 success: false,
-                error: 'Animal has no product'
+                error: 'لا منتج لهذا الحيوان'
             };
         }
 
@@ -323,7 +401,7 @@ class AnimalSystemService {
 
             return {
                 success: false,
-                error: 'Inventory full'
+                error: 'المخزن ممتلئ'
             };
         }
 

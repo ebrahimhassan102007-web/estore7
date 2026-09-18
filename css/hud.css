@@ -324,3 +324,149 @@
 .hud-level-badge::before{content:'★';color:#ffe45b;font-size:12px;margin-inline-end:2px}.hud-currency-item::after{content:'+';display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#65bd2f;border:1px solid white;color:white}.hud-time-pill .clock::before{content:'☀️ ';}.hud-utility-stack{position:absolute;right:max(12px,env(safe-area-inset-right));top:86px;display:grid;gap:9px}.hud-utility-stack button,.hud-action-stack button{display:grid;place-items:center;border:3px solid #fff4d2;background:linear-gradient(#8d5b2f,#543016);box-shadow:0 4px 0 #321b0c,0 7px 16px #0006;color:#fff;border-radius:16px;font-size:23px;width:52px;height:52px}.hud-action-stack{position:absolute;right:max(20px,env(safe-area-inset-right));bottom:max(24px,env(safe-area-inset-bottom));display:flex;align-items:flex-end;gap:10px}.hud-action-stack .harvest-button{width:72px;height:72px;border-radius:50%;font-size:31px;background:linear-gradient(#73d93f,#3c941d)}.hud-action-stack .jump-button{border-radius:50%;background:linear-gradient(#f4b23f,#d27513)}
 .hud-missions-panel:before,.hud-missions-panel:after{content:'';position:absolute;top:-9px;width:12px;height:18px;border-radius:4px;background:#5a351b}.hud-missions-panel:before{left:20px}.hud-missions-panel:after{right:20px}
 @media(max-width:700px){.hud-missions-panel{width:145px;top:72px}.hud-utility-stack{top:70px}.hud-utility-stack button{width:44px;height:44px;font-size:19px}.hud-bottom-hotbar{max-width:58vw}.hotbar-slot{width:44px;height:44px;flex:0 0 auto}.hud-action-stack{bottom:86px}.hud-top-bar{gap:3px}.hud-level-card{min-width:105px}.hud-currency-item{min-width:57px;padding:3px 5px;font-size:11px}.hud-time-pill{min-width:62px}}
+
+/* ============================================================
+   🎒 الحقيبة / شيت البيع (P0: حصاد ← مخزن ← كوينز)
+   ============================================================ */
+#game-hud-overlay .hud-sheet {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translate(-50%, 105%);
+  width: min(520px, 96vw);
+  max-height: min(62vh, 460px);
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #fcedc9 0%, #e6cb9d 100%);
+  border: 4px solid #814c1e;
+  border-bottom: none;
+  border-radius: 22px 22px 0 0;
+  box-shadow: 0 -10px 34px rgba(0, 0, 0, .38);
+  transition: transform .28s cubic-bezier(.2, .8, .2, 1);
+  pointer-events: auto;
+  z-index: 1400;
+}
+
+#game-hud-overlay .hud-sheet.is-open {
+  transform: translate(-50%, 0);
+}
+
+.hud-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 2px dashed #a3703c;
+  color: #5a2e0a;
+}
+
+.hud-sheet-title {
+  font-size: 16px;
+  font-weight: 900;
+  flex: 1;
+}
+
+.hud-sheet-sub {
+  font-size: 12px;
+  font-weight: 800;
+  color: #6a3e1b;
+  background: rgba(255, 255, 255, .55);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.hud-sheet-close {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid #fff4d2;
+  background: linear-gradient(#8d5b2f, #543016);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.hud-sheet-body {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 8px 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.hud-sheet-foot {
+  padding: 8px 12px max(10px, env(safe-area-inset-bottom));
+  border-top: 2px dashed #a3703c;
+}
+
+.hud-sheet-wide {
+  width: 100%;
+  padding: 9px 0;
+  border-radius: 14px;
+  border: 2px solid #fff;
+  background: linear-gradient(180deg, #79d63c 0%, #46961a 100%);
+  color: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.hud-bag-row {
+  display: grid;
+  grid-template-columns: 26px 1fr auto auto auto auto;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .6);
+  border: 1.5px solid #a3703c;
+  color: #4a280c;
+  font-weight: 800;
+  font-size: 13px;
+}
+
+.hud-bag-icon { font-size: 19px; }
+.hud-bag-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hud-bag-count { font-size: 12px; color: #6a3e1b; }
+.hud-bag-price { font-size: 11px; color: #2f6d16; }
+
+.hud-bag-row button {
+  border: 1.5px solid #fff4d2;
+  border-radius: 9px;
+  background: linear-gradient(#c48a3a, #8a5520);
+  color: #fff;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.hud-bag-row button.all { background: linear-gradient(#79d63c, #46961a); }
+.hud-bag-row button:active { transform: scale(.94); }
+.hud-bag-empty { text-align: center; padding: 14px; font-size: 12px; color: #6a3e1b; }
+
+@media (max-width: 700px) {
+  .hud-bag-row { grid-template-columns: 22px 1fr auto auto; font-size: 12px; }
+  .hud-bag-price { display: none; }
+}
+
+/* ============================================================
+   🕹️ التحكم بالأطراف الفيزيائية — RTL لا يعكس يده
+   الجoystick يسار الجهاز فعليًا وزر الفعل يمينه فعليًا.
+   ============================================================ */
+#game-hud-overlay .hud-joystick-zone {
+  left: max(18px, env(safe-area-inset-left));
+  right: auto;
+  inset-inline-start: auto;
+  inset-inline-end: auto;
+}
+
+#game-hud-overlay .hud-action-stack {
+  right: max(20px, env(safe-area-inset-right));
+  left: auto;
+  inset-inline-start: auto;
+  inset-inline-end: auto;
+}

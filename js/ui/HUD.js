@@ -2,7 +2,11 @@
  * ============================================================
  * MY FARM 3D - DEDICATED MOBILE HUD CONTROLLER
  * ============================================================
+ * الطبقة المرئية فقط: تقرأ GameState وتكتب الأفعال عبر الأنظمة
+ * (InventorySystem للبيع/البذور). لا THREE ولا منطق مزرعة هنا.
+ * ============================================================
  */
+import { InventorySystem } from '../systems/InventorySystem.js';
 const PRESENTATION_DEFAULTS = {
   player: {
     coins: 15230,
@@ -44,6 +48,7 @@ export class HUD {
     this.joystickCenter = { x: 0, y: 0 };
     this.maxJoystickRadius = 38;
     this.missionsOpen = false;
+    this.bagOpen = false;
   }
 
   getState(path, fallback = null) {
@@ -131,6 +136,19 @@ export class HUD {
 
       <!-- BOTTOM CENTER HOTBAR -->
       <nav class="hud-bottom-hotbar" id="hud-hotbar"></nav>
+
+      <!-- 🎒 الحقيبة: عرض + بيع (المسار: حصاد ← مخزن ← كوينز) -->
+      <section class="hud-sheet" id="hud-bag-sheet" aria-hidden="true">
+        <header class="hud-sheet-head">
+          <span class="hud-sheet-title">🎒 المخزن</span>
+          <span class="hud-sheet-sub" id="hud-bag-capacity">0 / 50</span>
+          <button type="button" class="hud-sheet-close" id="hud-bag-close" aria-label="إغلاق">✕</button>
+        </header>
+        <div class="hud-sheet-body" id="hud-bag-list"></div>
+        <footer class="hud-sheet-foot">
+          <button type="button" class="hud-sheet-wide" id="hud-bag-sell-crops">بيع كل المحاصيل 💰</button>
+        </footer>
+      </section>
     `;
     return root;
   }
@@ -151,6 +169,28 @@ export class HUD {
 
     this.renderHotbar();
     this.renderMissions();
+
+    const bagBtn = this.container?.querySelector('#hud-btn-bag');
+    bagBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleBag();
+    });
+
+    this.container?.querySelector('#hud-bag-close')?.addEventListener('click', () => this.toggleBag(false));
+    this.container?.querySelector('#hud-bag-sell-crops')?.addEventListener('click', () => this.sellAllCrops());
+
+    if (this.eventBus && typeof this.eventBus.on === 'function') {
+      // تحديث عدّادات البذور + الحقيبة عند أي تغيير في المخزن
+      this.eventBus.on('state:changed', (path) => {
+        if (path === 'inventory.items') {
+          this.syncSeedCounts();
+          if (this.bagOpen) this.renderBag();
+        }
+      });
+      this.eventBus.on('crop:harvested', () => this.syncSeedCounts());
+      this.eventBus.on('time:hour', () => this.pullClock());
+      this.eventBus.on('game:tick', () => this.pullClock());
+    }
 
     const interactBtn = this.container?.querySelector('#hud-btn-interact');
     interactBtn?.addEventListener('click', (e) => {
@@ -199,6 +239,9 @@ export class HUD {
       this.getState('player.xpToNext', PRESENTATION_DEFAULTS.player.xpToNext)
     );
     this.renderMissions();
+    this.syncSeedCounts();
+    this.pullClock();
+    this.updateCapacityPill();
   }
 
   updateCoins(val) {
@@ -310,6 +353,163 @@ export class HUD {
       return true;
     }
     return false;
+  }
+
+  /* ==========================================================
+     🕐 الساعة (P2) — تُكتب من TimeManager عبر main.js
+     ========================================================== */
+  updateClock(label, icon = '☀️', day = 1, season = 'spring') {
+    const clockEl = this.container?.querySelector('#hud-time');
+    const seasonEl = this.container?.querySelector('#hud-season');
+    if (clockEl && label) clockEl.textContent = `${icon} ${label}`;
+
+    const SEASONS_AR = { spring: 'الربيع', summer: 'الصيف', autumn: 'الخريف', winter: 'الشتاء' };
+    if (seasonEl) seasonEl.textContent = `${SEASONS_AR[season] || season} - يوم ${day}`;
+  }
+
+  /** قراءة الساعة من الوقت الحالي للحالة (بدون import لـ TimeManager). */
+  pullClock() {
+    const cycle = this.getState('time.dayCycle', 0) || 0;
+    const totalMinutes = Math.floor(cycle * 24 * 60);
+    const hours = Math.floor(totalMinutes / 60) % 24;
+    const minutes = totalMinutes % 60;
+    const suffix = hours < 12 ? 'ص' : 'م';
+    const h12 = ((hours + 11) % 12) + 1;
+    const icon = hours >= 5 && hours < 8 ? '🌅' : hours >= 8 && hours < 17 ? '☀️' : hours >= 17 && hours < 20 ? '🌇' : '🌙';
+    this.updateClock(
+      `${String(h12).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${suffix}`,
+      icon,
+      this.getState('time.day', 1) || 1,
+      this.getState('time.season', 'spring')
+    );
+  }
+
+  /* ==========================================================
+     🌱 بذور الـ Hotbar تتبع المخزن الحقيقي
+     ========================================================== */
+  syncSeedCounts() {
+    let changed = false;
+    for (const item of this.currentHotbar) {
+      if (item.type !== 'seed') continue;
+      const count = InventorySystem.count(item.id);
+      if (item.count !== count) {
+        item.count = count;
+        changed = true;
+      }
+    }
+    if (changed) this.renderHotbar();
+    else this.updateCapacityPill();
+  }
+
+  refreshHotbarCounts() {
+    this.syncSeedCounts();
+  }
+
+  /**main.js يستدعيها بعد الزراعة — العداد البصري فقط (المخزن هو المرجع). */
+  consumeHotbarSeed(cropType) {
+    const item = this.currentHotbar.find(h => h.cropType === cropType);
+    if (item && item.count !== null) {
+      item.count = Math.max(0, InventorySystem.count(item.id));
+      this.renderHotbar();
+    }
+  }
+
+  /* ==========================================================
+     🎒 الحقيبة — عرض وبيع
+     ========================================================== */
+  toggleBag(force) {
+    const sheet = this.container?.querySelector('#hud-bag-sheet');
+    if (!sheet) return;
+    this.bagOpen = typeof force === 'boolean' ? force : !this.bagOpen;
+    sheet.classList.toggle('is-open', this.bagOpen);
+    sheet.setAttribute('aria-hidden', this.bagOpen ? 'false' : 'true');
+    if (this.bagOpen) this.renderBag();
+  }
+
+  updateCapacityPill() {
+    const el = this.container?.querySelector('#hud-bag-capacity');
+    if (!el) return;
+    const inv = this.getState('inventory', {}) || {};
+    const max = inv.maxCapacity ?? inv.capacity ?? 50;
+    const used = Object.values(inv.items || {}).reduce((sum, it) => sum + (it?.count || 0), 0);
+    el.textContent = `${used} / ${max}`;
+  }
+
+  renderBag() {
+    const list = this.container?.querySelector('#hud-bag-list');
+    if (!list) return;
+    this.updateCapacityPill();
+
+    const rows = InventorySystem.list();
+    if (rows.length === 0) {
+      list.innerHTML = `<div class="hud-bag-empty">المخزن فارغ — احصد محصولًا 🌾</div>`;
+      return;
+    }
+
+    list.innerHTML = rows.map(r => `
+      <div class="hud-bag-row" data-item="${r.id}">
+        <span class="hud-bag-icon">${r.icon}</span>
+        <span class="hud-bag-name">${r.name}</span>
+        <span class="hud-bag-count">×${r.count}</span>
+        <span class="hud-bag-price">${r.sellPrice} 💰</span>
+        <button type="button" class="hud-bag-sell" data-sell="${r.id}">بيع</button>
+        <button type="button" class="hud-bag-sell all" data-sell-all="${r.id}">الكل</button>
+      </div>
+    `).join('');
+
+    list.querySelectorAll('[data-sell]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.sellItem(btn.dataset.sell, 1);
+      });
+    });
+    list.querySelectorAll('[data-sell-all]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.sellItem(btn.dataset.sellAll, null);
+      });
+    });
+  }
+
+  sellItem(itemId, amount) {
+    const res = amount === null
+      ? InventorySystem.sellAll(itemId)
+      : InventorySystem.sell(itemId, amount);
+
+    if (!res.success) {
+      this._emit('toast:error', res.error || 'تعذّر البيع');
+      return;
+    }
+    this._emit('toast:success', `💰 بعت ${res.amount} × ${res.name} مقابل ${res.coins}`);
+    this._emit('item:sold', { itemId, amount: res.amount, coins: res.coins });
+    this.renderBag();
+    this.syncSeedCounts();
+  }
+
+  sellAllCrops() {
+    let coins = 0;
+    let units = 0;
+    for (const row of InventorySystem.list()) {
+      if (row.category !== 'crop') continue;
+      const res = InventorySystem.sellAll(row.id);
+      if (res.success) {
+        coins += res.coins;
+        units += res.amount;
+      }
+    }
+    if (units === 0) {
+      this._emit('toast:error', 'لا توجد محاصيل للبيع');
+      return;
+    }
+    this._emit('toast:success', `💰 بعت ${units} محصول مقابل ${coins} عملة`);
+    this.renderBag();
+    this.syncSeedCounts();
+  }
+
+  _emit(name, payload) {
+    if (this.eventBus && typeof this.eventBus.emit === 'function') {
+      this.eventBus.emit(name, payload);
+    }
   }
 
   setupJoystick() {

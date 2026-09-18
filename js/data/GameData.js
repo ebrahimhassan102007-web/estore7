@@ -467,7 +467,16 @@ export const TOOLS = Object.freeze({
 
 export const STARTER_KIT = Object.freeze({
     buildings: ['grain_mill', 'bakery'],
-    items: { wheat: 6, corn: 4, carrot: 2 },
+    items: {
+        wheat: 6,
+        corn: 4,
+        carrot: 2,
+        // بذور أولية — بدونها لا يمكن بدء حلقة الزراعة (الحصاد يعيد البذرة)
+        wheat_seed: 8,
+        corn_seed: 5,
+        carrot_seed: 3,
+        tomato_seed: 2
+    },
     recipes: ['flour', 'bread'],
     // مواقع البناء على الشبكة (بين الحقول والأراضي الجنوبية)
     positions: {
