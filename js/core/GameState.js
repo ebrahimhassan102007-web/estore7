@@ -5,6 +5,7 @@
  */
 
 import { Events } from './EventBus.js';
+import { readRealClock } from './Calendar.js';
 
 class GameStateManager {
     constructor() {
@@ -17,6 +18,10 @@ class GameStateManager {
     }
 
     getDefaultState() {
+        // البذرة الزمنية الحقيقية: حتى قبل Time.start() لا نقول «الشتاء»
+        // في سبتمبر — الفصل من فلك الجهاز (Brief §0.4).
+        const clock = readRealClock(new Date());
+
         return {
             player: {
                 name: 'مزارع',
@@ -55,9 +60,27 @@ class GameStateManager {
 
             inventory: {
                 items: {},
-                capacity: 50,
-                maxCapacity: 50,
+                // legacy mirror = silo + barn (يحدّثه StorageSystem)
+                capacity: 300,
+                maxCapacity: 300,
                 upgrades: 0
+            },
+
+            /*
+             * التخزين بأسلوب Hay Day (Brief §1):
+             *   الصوامع (Silo)  → المحاصيل الخام + البذور فقط.
+             *                        امتلاؤها يمنع الحصاد.
+             *   المخزن (Barn)   → منتجات الحيوانات + المصنّعات
+             *                        + العدد + مواد الترقية.
+             *                        امتلاؤه يمنع استلام الآلات والحيوانات.
+             * الترقية بمواد (مسامير/ألواح/شريط) تُكسب من الحصاد
+             * والطلبات وزوّار الكشك.
+             */
+            storage: {
+                silo: { level: 1, capacity: 150 },
+                barn: { level: 1, capacity: 150 },
+                upgrades: 0,
+                lastUpgradeAt: 0
             },
 
             crops: {
@@ -136,15 +159,29 @@ class GameStateManager {
                 recipes: []
             },
 
+            /*
+             * الوقت الحقيقي (Brief §0.3): hours/minutes/day/season كلها
+             * من ساعة الجهاز والتقويم الفلكي — لا تسريع ولا يوم مضغوط.
+             */
             time: {
                 gameTime: 0,
                 lastTick: Date.now(),
-                dayCycle: 0,
-                // ساعة اللعبة داخل الحالة (1 يوم = 12 دقيقة حقيقية)
-                hours: 8,
-                minutes: 0,
-                day: 1,
-                season: 'spring'
+                dayCycle: clock.dayProgress,
+                hours: clock.hours,
+                minutes: clock.minutes,
+                day: clock.day,
+                month: clock.month,
+                year: clock.year,
+                dateKey: clock.dateKey,
+                dateLabel: clock.dateLabel,
+                dateLabelEn: clock.dateLabelEn,
+                season: clock.season,
+                seasonAr: clock.seasonAr,
+                seasonEn: clock.seasonEn,
+                seasonIcon: clock.seasonIcon,
+                phase: clock.phase,
+                phaseIcon: clock.phaseIcon,
+                clockLabel: clock.clockLabel
             }
         };
     }

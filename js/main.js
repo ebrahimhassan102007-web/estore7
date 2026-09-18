@@ -30,7 +30,16 @@ import { SoundFX } from './ui/SoundFX.js';
 import { ProductionYard } from './world/ProductionYard.js';
 import UIManager from './ui/UIManager.js';
 import { Environment } from './world/Environment.js';
+import { HouseInterior } from './world/HouseInterior.js';
 import { CollisionEngine } from './core/CollisionEngine.js';
+import {
+    WORLD_BOUNDS,
+    INTERIOR_BOUNDS,
+    INTERIOR_ROOM,
+    INTERIOR_SPAWN,
+    PENS,
+    HOUSE as HOUSE_LAYOUT
+} from './world/FarmLayout.js';
 
 /* ============================================================
    CAMERA & ENGINE CONFIGURATION (Ground Focused Framing)
@@ -89,14 +98,62 @@ const CONFIG = Object.freeze({
 /** إزاحة الشمس الافتراضية قبل أول tick لدورة النهار/الليل. */
 const DEFAULT_SUN_OFFSET = Object.freeze({ x: 22, y: 38, z: 18 });
 
+/**
+ * نقطة الظهور: على الممر الرئيسي داخل البوابة الجنوبية، فيرى اللاعب
+ * المزرعة ممتدة شمالًا (البيت يسارًا، الحقول يمينًا، الطاحونة أمامه).
+ */
+const PLAYER_SPAWN = Object.freeze({ x: 0, z: 20 });
+
+/**
+ * صبغة ضوء الشمس لكل فصل (Brief §2 «weather mood per hour + season»):
+ * صيف أبيض حار · ربيع محايد · خريف دافئ · شتاء بارد.
+ */
+const SUN_TINT_BY_SEASON = Object.freeze({
+    spring: 0xfff4e0,
+    summer: 0xfff6e4,
+    autumn: 0xffdfae,
+    winter: 0xe9f1ff
+});
+
+/** السماء/الأرض للضوء المحيط لكل فصل. */
+const AMBIENT_BY_SEASON = Object.freeze({
+    spring: { sky: 0xf6ffdf, ground: 0x4f8a2c },
+    summer: { sky: 0xfff3db, ground: 0x487928 },
+    autumn: { sky: 0xffe9c9, ground: 0x6b5a2a },
+    winter: { sky: 0xeaf3ff, ground: 0x3f5f4a }
+});
+
+/** كثافة الضباب: سديم صيفي · خريف أثقل · ضباب شتوي بارد · ربيع صافٍ. */
+const FOG_DENSITY_BY_SEASON = Object.freeze({
+    spring: 0.013,
+    summer: 0.017,
+    autumn: 0.020,
+    winter: 0.026
+});
+
+/** حدود المزرعة (clamp اللاعب) — تُستبدل بحدود الغرفة داخل البيت. */
+const FARM_BOUNDS = Object.freeze({
+    minX: WORLD_BOUNDS.minX,
+    maxX: WORLD_BOUNDS.maxX,
+    minZ: WORLD_BOUNDS.minZ,
+    maxZ: WORLD_BOUNDS.maxZ
+});
+
 class PlayerController {
     constructor(scene, { collision = null } = {}) {
         this.scene = scene;
         this.collision = collision;
         this.root = new THREE.Group();
         this.root.name = 'Player';
-        this.root.position.set(0, 0, 0);
+        this.root.position.set(PLAYER_SPAWN.x, 0, PLAYER_SPAWN.z);
+        this.root.rotation.y = Math.PI; // يواجه الشمال (قلب المزرعة)
         this.scene.add(this.root);
+
+        /*
+         * حدود الحركة قابلة للتبديل: المزرعة أو داخل البيت.
+         * (كانت ±30 مثبتة في update ⇒ تكسر الدخول للبيت عند z=400.)
+         */
+        this.bounds = { ...FARM_BOUNDS };
 
         this.model = null;
         this.mixer = null;
@@ -125,6 +182,15 @@ class PlayerController {
         this.gravity = 14.0;
 
         this.loadModel();
+    }
+
+    /** استبدال حدود الحركة (مزرعة ↔ داخل البيت). */
+    setBounds(bounds) {
+        if (!bounds) return;
+        this.bounds = { ...bounds };
+        // تصحيح فوري إن كان اللاعب خارج الحدود الجديدة
+        this.root.position.x = THREE.MathUtils.clamp(this.root.position.x, this.bounds.minX, this.bounds.maxX);
+        this.root.position.z = THREE.MathUtils.clamp(this.root.position.z, this.bounds.minZ, this.bounds.maxZ);
     }
 
     /** قفزة إن كان اللاعب على الأرض. @returns {boolean} هل نفّذنا قفزة */
@@ -444,8 +510,9 @@ class PlayerController {
                 z = resolved.z;
             }
 
-            this.root.position.x = THREE.MathUtils.clamp(x, -30, 30);
-            this.root.position.z = THREE.MathUtils.clamp(z, -30, 30);
+            const b = this.bounds;
+            this.root.position.x = THREE.MathUtils.clamp(x, b.minX, b.maxX);
+            this.root.position.z = THREE.MathUtils.clamp(z, b.minZ, b.maxZ);
 
             const targetAngle = Math.atan2(this.moveDirection.x, this.moveDirection.z);
             let currentAngle = this.root.rotation.y;
@@ -490,22 +557,44 @@ class PlayerController {
 const STAGE_SCALE = { sprout: 0.34, growing: 0.66, ready: 1.0, withered: 0.74 };
 const WITHERED_COLOR = 0x7a6642;
 
+/** ميل رأس المحصول — الذرة تنحني، والصويا تُظهر قرونها، والقصب مستقيم. */
+const HEAD_TILT = Object.freeze({
+    corn: -0.3,
+    soybean: -0.55,
+    carrot: 0.12,
+    wheat: 0.0,
+    tomato: 0.0,
+    sugarcane: 0.0
+});
+
 class CropBatchRenderer {
     constructor(scene, { capacity = 64 } = {}) {
         this.scene = scene;
         this.capacity = capacity;
         this.dirty = true;
         this.readyCount = 0;
+        /*
+         * عند دخول البيت تُخفى كل دفعات المحاصيل (لا تُدمَّر) —
+         * rebuild/pulse تحترم هذه الراية حتى لا تُظهرها مجددًا.
+         */
+        this._visible = true;
 
         // هندسة مشتركة لكل المحاصيل
         this.stemGeo = new THREE.CylinderGeometry(0.045, 0.062, 1, 5);
         this.bedGeo = new THREE.BoxGeometry(1.85, 0.07, 1.85);
 
+        /*
+         * رأس مميز لكل محصول حتى تُقرأ الأنواع من مسافة اللعب:
+         * قمح (سنبلة مخروطية) · ذرة (كوز) · جزر (جذر) · طماطم (ثمرة)
+         * فول صويا (قرن) · قصب سكر (عقدة طويلة).
+         */
         this.headGeoByCrop = {
             wheat: new THREE.ConeGeometry(0.1, 0.34, 6),
             corn: new THREE.CylinderGeometry(0.1, 0.09, 0.38, 7),
             carrot: new THREE.ConeGeometry(0.17, 0.26, 7),
-            tomato: new THREE.SphereGeometry(0.13, 8, 6)
+            tomato: new THREE.SphereGeometry(0.13, 8, 6),
+            soybean: new THREE.CapsuleGeometry(0.075, 0.2, 4, 7),
+            sugarcane: new THREE.CylinderGeometry(0.075, 0.085, 0.62, 6)
         };
 
         const stemMat = new THREE.MeshStandardMaterial({ roughness: 0.8 });
@@ -547,6 +636,16 @@ class CropBatchRenderer {
 
     markDirty() {
         this.dirty = true;
+    }
+
+    /** إظهار/إخفاء كل الدفعات (دخول/خروج البيت). */
+    setVisible(visible) {
+        this._visible = !!visible;
+        this.beds.visible = this._visible && this.beds.count > 0;
+        for (const group of this.groups.values()) {
+            group.stem.visible = this._visible && group.stem.count > 0;
+            group.head.visible = this._visible && group.head.count > 0;
+        }
     }
 
     _setColor(mesh, i, hex) {
@@ -602,7 +701,7 @@ class CropBatchRenderer {
         }
 
         bedMesh.count = bedIndex;
-        bedMesh.visible = bedIndex > 0;
+        bedMesh.visible = this._visible && bedIndex > 0;
         bedMesh.instanceMatrix.needsUpdate = true;
         if (bedMesh.instanceColor) bedMesh.instanceColor.needsUpdate = true;
 
@@ -633,8 +732,8 @@ class CropBatchRenderer {
 
         group.stem.count = stemCount;
         group.head.count = headCount;
-        group.stem.visible = stemCount > 0;
-        group.head.visible = headCount > 0;
+        group.stem.visible = this._visible && stemCount > 0;
+        group.head.visible = this._visible && headCount > 0;
 
         if (headCount === 0) return;
 
@@ -663,7 +762,7 @@ class CropBatchRenderer {
 
             const headY = 0.62 * base + 0.14;
             this._v.set(plant.x, headY, plant.z);
-            this._e.set(0, plant.spin, cropId === 'corn' ? -0.3 : 0);
+            this._e.set(0, plant.spin, HEAD_TILT[cropId] || 0);
             this._q.setFromEuler(this._e);
             const hs = cropId === 'tomato' ? base : Math.max(0.45, base);
             this._sc.set(hs, hs, hs);
@@ -691,7 +790,7 @@ class CropBatchRenderer {
                 touched = true;
                 const hs = Math.max(0.45, STAGE_SCALE.ready) * wobble;
                 this._v.set(plant.x, 0.62 * STAGE_SCALE.ready + 0.14, plant.z);
-                this._e.set(0, plant.spin, cropId === 'corn' ? -0.3 : 0);
+                this._e.set(0, plant.spin, HEAD_TILT[cropId] || 0);
                 this._q.setFromEuler(this._e);
                 this._sc.set(hs, hs, hs);
                 this._m.compose(this._v, this._q, this._sc);
@@ -726,7 +825,16 @@ class MyFarmApp {
 
         this.player = null;
         this.fieldMeshes = new Map();
-        this.activeTarget = null; // { type: 'field' | 'slot', fieldId, slotIndex, data }
+        this.activeTarget = null; // { type: 'field' | 'slot' | 'door' | 'animal' | 'market' | 'interior', ... }
+
+        /*
+         * 🏠 داخل البيت (Brief §1): مشهد داخلي حقيقي يُبنى مرة واحدة
+         * ويُخفى/يُظهر بدل تفكيك المزرعة — لا شاشة سوداء ولا تسريب.
+         */
+        this.houseInterior = null;
+        this.inInterior = false;
+        this._interiorCameraDistance = 6.2;
+        this._outsideCameraDistance = CONFIG.camera.defaultDistance;
 
         // 🏭 طبقة الإنتاج (3D + UI + مؤثرات)
         this.productionYard = null;
@@ -800,9 +908,40 @@ class MyFarmApp {
             this.createScene();
             this.createCamera();
             this.createLighting();
+
+            /*
+             * الساعة الحقيقية تُقرأ قبل بناء العالم: أول إطار يجب أن
+             * يعرض سماء/إضاءة/فصل صحيحين (لا «شتاء» في سبتمبر).
+             */
+            try {
+                Time.readNow();
+            } catch (e) {
+                console.warn('[MY FARM] Real clock notice:', e);
+            }
+
             this.collision = new CollisionEngine();
             this.environment = new Environment(this.scene, { collision: this.collision });
             this.ground = this.environment.group;
+
+            // صبغة الفصل من أول إطار (تُعاد عند حدث time:season)
+            try {
+                this.environment.setSeason(Time.getClock().season);
+            } catch (e) { /* ديكور — لا يكسر الإقلاع */ }
+
+            /*
+             * 🏠 مشهد داخل البيت — يُبنى مخفيًا عند الإقلاع حتى يكون
+             * الدخول فوريًا (بلا تحميل أثناء اللعب).
+             */
+            try {
+                this.houseInterior = new HouseInterior({
+                    scene: this.scene,
+                    collision: this.collision
+                });
+                this.houseInterior.setVisible(false);
+            } catch (e) {
+                console.warn('[MY FARM] HouseInterior notice:', e);
+                this.houseInterior = null;
+            }
 
             try {
                 await Promise.race([
@@ -967,6 +1106,49 @@ class MyFarmApp {
             Events.on('crop:harvested', (data) => this.onCropHarvested(data));
             Events.on('inventory:full', () => {
                 this.toast?.error('المخزن ممتلئ! بِع بعض المحاصيل أو رقِّ السعة.');
+            });
+
+            /*
+             * 🐄 شراء حيوان جديد ⇒ مجسم حي داخل حظيرته + ربط بالنظام.
+             * بدون هذا يبقى الشراء «واجهة ميتة» (Brief §1 «no dead UI»).
+             */
+            Events.on('animal:purchased', (payload) => this.onAnimalPurchased(payload));
+
+            // 🍂 تغيّر الفصل الفلكي ⇒ صبغة أرض/عشب/فراء جديدة
+            Events.on('time:season', (season) => {
+                try {
+                    this.environment?.setSeason?.(season);
+                } catch (e) { /* ديكور */ }
+            });
+
+            /*
+             * 🏪 كشك الطريق: أي عملية بيع/شراء حقيقية تُعلن للاعب.
+             * (بدون هذا كان MarketSystem يعمل بصمت — Brief §1 «no silent failures»).
+             */
+            Events.on('market:sold', (listingId, earnings, itemId, amount) =>
+                this.onStallSale({ earnings, itemId, amount }));
+            Events.on('market:purchased', (listingId, itemId, amount, price) =>
+                this.toast?.success(`🛒 اشتريت ${amount}× ${ITEMS[itemId]?.name || itemId} بـ 💰${price}`));
+            Events.on('market:listed', () => this.hud?.syncStorage?.());
+            Events.on('storage:changed', () => this.hud?.syncStorage?.());
+            /*
+             * 📦 مواد الترقية تسقط من ثلاثة مصادر (حصاد/طلبات/كشك) —
+             * إعلان واحد هنا يغطيها جميعًا بدل تكرار الكود في كل نظام.
+             */
+            Events.on('storage:supply-drop', ({ itemId, amount = 1, source = 'harvest' } = {}) => {
+                const item = ITEMS[itemId] || {};
+                const where = source === 'order' ? 'من الطلب' : source === 'stallSale' ? 'من زائر الكشك' : 'من الحصاد';
+                this.toast?.success(`${item.icon || '📦'} ${item.name || itemId} ×${amount} ${where} — مواد ترقية المخازن`);
+                this.hud?.syncStorage?.();
+            });
+            Events.on('storage:upgraded', ({ store, level, capacity } = {}) => {
+                const label = store === 'barn' ? 'الحظيرة (Barn)' : 'الصومعة (Silo)';
+                this.toast?.success(`⬆️ رُقّيت ${label} إلى المستوى ${level} — السعة ${capacity}`);
+                this.hud?.syncStorage?.();
+            });
+            Events.on('storage:full', (store) => {
+                const label = store === 'barn' ? 'الحظيرة (Barn) ممتلئة' : 'الصومعة (Silo) ممتلئة';
+                this.toast?.error(`📦 ${label} — بِع بعض المحتويات أو رقِّ السعة`);
             });
 
             // أحداث سلسلة الإنتاج
@@ -1453,8 +1635,34 @@ class MyFarmApp {
         if (!this.activeTarget) return;
         const target = this.activeTarget;
 
+        // 🏠 تفاعلات داخل البيت لها الأولوية (لا أهداف مزرعة أثناء الدخول)
+        if (target.type === 'interior') {
+            if (target.id === 'exit') {
+                // الباب يُفتح فعلًا (مفصلة) ثم نُعيد اللاعب للخارج
+                this.houseInterior?.exitDoor?.setOpen?.(true);
+                this.exitHouse();
+            } else if (target.id === 'chest') {
+                this.houseInterior?.toggleChest?.();
+                this.gameUI?.open('bag');
+                this.soundFX?.play?.('open');
+            }
+            return;
+        }
+
         if (target.type === 'door') {
-            const opened = target.door.toggle();
+            const door = target.door;
+
+            /*
+             * باب البيت بابٌ حقيقي بمفصلة (يفتح فعليًا) + فعل الدخول.
+             * Doors.js يحمل `action` من BuildingManager.
+             */
+            if (door.action === 'enter-house') {
+                if (!door.open) door.toggle();
+                this.enterHouse();
+                return;
+            }
+
+            const opened = door.toggle();
             this.spawnFloatingFeedback(opened ? '🚪 الباب فُتح' : '🚪 الباب أُغلق', '#ffd54f');
             return;
         }
@@ -1542,7 +1750,13 @@ class MyFarmApp {
         } else if (slot.state === 'ready') {
             const res = FarmingSystem.harvestSlot(fieldId, slotIndex);
             if (!res.success) {
-                this.toast?.error(res.error === 'inventory_full' ? 'المخزن ممتلئ!' : (res.error || 'تعذّر الحصاد'));
+                // الصومعة ممتلئة ⇒ رسالة واضحة + طريق للحل (لا فشل صامت)
+                if (res.reason === 'silo_full' || res.error === 'inventory_full') {
+                    this.toast?.error('🌾 الصومعة ممتلئة! بِع محاصيل أو رقِّ السعة (المخازن ⬆️)');
+                    this.spawnFloatingFeedback('🌾 الصومعة ممتلئة', '#ff6b6b');
+                } else {
+                    this.toast?.error(res.error || 'تعذّر الحصاد');
+                }
                 return;
             }
             this.player?.playToolSwing?.();
@@ -1553,6 +1767,60 @@ class MyFarmApp {
 
         this.cropBatches?.markDirty();
         this.checkNearTargets(true);
+    }
+
+    /**
+     * حيوان مُشترى حديثًا ⇒ نضع له مجسمًا في حظيرة نوعه ونربطه.
+     * @param {{animal:object, species:string, name:string, icon:string, coins:number}} payload
+     */
+    onAnimalPurchased(payload) {
+        const animal = payload?.animal;
+        const managers = this.environment?.animals;
+        if (!animal?.id || !managers) return;
+
+        // مربوط مسبقًا؟ (إعادة شراء/إعادة تحميل)
+        if (managers.animals.some((r) => r.farmAnimalId === animal.id)) return;
+
+        const species = animal.animalId || payload.species;
+        const pen = PENS.find((p) => p.species === species) || PENS[0];
+        if (!pen) return;
+
+        const spot = this._findFreePenSpot(pen, managers);
+        const rigType = species === 'chicken' ? 'chicken' : species;
+        const rig = managers.spawn(
+            rigType,
+            spot.x,
+            spot.z,
+            1,
+            Math.min(pen.w, pen.d) / 2 - 1.1
+        );
+        rig.penId = pen.id;
+        rig.farmAnimalId = animal.id;
+        rig.animalIcon = getAnimal(species)?.icon || payload?.icon || '🐄';
+
+        const penRecord = managers.pens?.find((p) => p.id === pen.id);
+        const trough = penRecord?.group?.userData?.trough;
+        if (trough) rig.troughTarget = new THREE.Vector2(pen.x + trough.x, pen.z + trough.z);
+
+        // الفراء الموسمي يُطبَّق تلقائيًا داخل spawn() إن كان الفصل معروفًا
+        this.toast?.success(`${rig.animalIcon} أضفت ${payload?.name || species} إلى ${pen.id.replace('pen-', '') === 'chicken' ? 'قن الدجاج' : 'الحظيرة'} (−💰${payload?.coins || 0})`);
+        this.hud?.syncStorage?.();
+        Events.emit('farm:animal-spawned', { animalId: animal.id, penId: pen.id });
+    }
+
+    /** موضع فارغ داخل حظيرة (لا يتراكب مع مجسم قائم). */
+    _findFreePenSpot(pen, managers) {
+        const taken = (managers.animals || [])
+            .filter((r) => r.penId === pen.id)
+            .map((r) => [r.root.position.x, r.root.position.z]);
+
+        for (let attempt = 0; attempt < 24; attempt++) {
+            const x = pen.x + (Math.random() - 0.5) * (pen.w - 2.2);
+            const z = pen.z + (Math.random() - 0.5) * (pen.d - 2.2);
+            const clash = taken.some(([tx, tz]) => Math.hypot(tx - x, tz - z) < 1.1);
+            if (!clash) return { x, z };
+        }
+        return { x: pen.x, z: pen.z };
     }
 
     /* ========================================================
@@ -1598,6 +1866,17 @@ class MyFarmApp {
         if (linked > 0) {
             console.log(`[MY FARM] 🐄 ${linked} حيوانات مرتبطة بنظام الإنتاج الحيواني.`);
         }
+
+        /*
+         * مؤشرات «المنتج جاهز» + فراء الفصل تُستعاد من الحالة المحفوظة،
+         * فلا يبدأ الحيوان بمظهر خاطئ بعد إعادة التحميل.
+         */
+        const stateById = {};
+        for (const a of (GameState.get('farm.animals') || [])) stateById[a.id] = a.state;
+        this.environment?.animals?.syncReadyStates?.(stateById);
+        try {
+            this.environment?.animals?.setSeasonCoat?.(Time.getClock().season);
+        } catch (e) { /* ديكور */ }
     }
 
     interactWithAnimal(target) {
@@ -1621,7 +1900,8 @@ class MyFarmApp {
             return;
         }
 
-        const feedId = def?.feed || 'wheat';
+        // العلف خاص بكل نوع (GameData: feedItem/feed) — لا قمح عام للجميع
+        const feedId = def?.feedItem || def?.feed || 'wheat';
         if (InventorySystem.count(feedId) <= 0) {
             this.toast?.error(`ينقصك ${ITEMS[feedId]?.name || feedId} للإطعام`);
             return;
@@ -1634,6 +1914,108 @@ class MyFarmApp {
         }
         this.toast?.success(`${def?.icon || '🐄'} تم إطعام ${def?.name || 'الحيوان'} 🌾`);
         this.spawnFloatingFeedback('🌾 شبعان!', '#86d942');
+    }
+
+    /* ========================================================
+       🏪 كشك الطريق — إعلان البيع للاعب (لا فشل صامت)
+       ======================================================== */
+    onStallSale({ earnings = 0, itemId = null, amount = 1 } = {}) {
+        const name = (itemId && ITEMS[itemId]?.name) || 'بضاعة';
+        this.toast?.success(`🧺 باع كشكك ${amount}× ${name} بـ 💰${earnings}`);
+        this.spawnFloatingFeedback(`+💰${earnings}`, '#ffd54f');
+        this.soundFX?.play?.('coin');
+        this.hud?.syncStorage?.();
+    }
+
+    /* ========================================================
+       🏠 داخل البيت — دخول/خروج حقيقي (Brief §1 «House interior»)
+       --------------------------------------------------------
+       المشكلة القديمة: الدخول كان يعرض غرفة فارغة/سوداء لأن
+       المزرعة تبقى مرسومة والداخل لم يكن موجودًا أصلًا.
+       الحل: مشهد داخلي جاهز عند الإقلاع (HouseInterior) —
+       عند الدخول نُخفي جذور المزرعة (visible=false، لا dispose)
+       وننقل اللاعب إلى INTERIOR_SPAWN، وعند الخروج نُظهرها
+       ونضع اللاعب أمام باب البيت. لا إعادة تحميل ⇒ لا شاشة سوداء.
+       ======================================================== */
+    enterHouse() {
+        if (this.inInterior || !this.houseInterior || !this.player?.root) return;
+
+        this.inInterior = true;
+        this.houseInterior.setVisible(true);
+        this._setFarmWorldVisible(false);
+
+        const spawn = this.houseInterior.getSpawnPoint(new THREE.Vector3());
+        this.player.root.position.set(spawn.x, 0, spawn.z);
+        this.player.root.rotation.y = Math.PI; // يواجه داخل الغرفة
+        this.player.setBounds(INTERIOR_BOUNDS);
+
+        // كاميرا أقرب داخل الغرفة (الجدران قريبة)
+        this._outsideCameraDistance = this.cameraDistance;
+        this.cameraDistance = this._interiorCameraDistance;
+        this.cameraFocus.active = false;
+
+        // إغلاق أي هدف/مؤشر من المزرعة
+        this.activeTarget = null;
+        document.getElementById('action-prompt')?.classList.remove('visible');
+
+        this.soundFX?.play?.('open');
+        this.toast?.info('🏠 دخلت البيت — الصندوق للمخزن، والباب للخروج');
+        Events.emit('interior:entered');
+        this.checkNearTargets(true);
+    }
+
+    exitHouse() {
+        if (!this.inInterior || !this.player?.root) return;
+
+        this.inInterior = false;
+        this.houseInterior?.setVisible(false);
+        this._setFarmWorldVisible(true);
+
+        const out = HouseInterior.getOutsideExit();
+        this.player.root.position.set(out.x, 0, out.z);
+        this.player.root.rotation.y = 0; // يواجه المزرعة
+        this.player.setBounds(FARM_BOUNDS);
+
+        this.cameraDistance = this._outsideCameraDistance || CONFIG.camera.defaultDistance;
+        this.activeTarget = null;
+        document.getElementById('action-prompt')?.classList.remove('visible');
+
+        this.soundFX?.play?.('open');
+        Events.emit('interior:exited');
+        this.checkNearTargets(true);
+    }
+
+    /**
+     * إظهار/إخفاء جذور المزرعة فقط (السماء والمصابيح واللاعب يبقون).
+     * نستخدم visible=false لا remove/dispose حتى لا نفقد الحالة.
+     */
+    _setFarmWorldVisible(visible) {
+        const roots = [
+            this.environment?.group,
+            this.productionYard?.group
+        ];
+
+        // دفعات المحاصيل تُدار براية خاصة (InstancedMesh بلا جذر مشترك)
+        this.cropBatches?.setVisible?.(visible);
+
+        for (const entry of this.fieldMeshes.values()) {
+            if (entry?.group) roots.push(entry.group);
+        }
+        if (this.productionYard?.entries) {
+            for (const e of this.productionYard.entries.values()) {
+                if (e?.group) roots.push(e.group);
+            }
+        }
+
+        for (const root of roots) {
+            if (root) root.visible = visible;
+        }
+
+        // الضباب داخل البيت أقصر (غرفة مغلقة) — نحفظ كثافة الخارج أولًا
+        if (this.scene?.fog) {
+            if (!visible) this._outsideFogDensity = this.scene.fog.density;
+            this.scene.fog.density = visible ? (this._outsideFogDensity || 0.018) : 0.06;
+        }
     }
 
     /**
@@ -1649,6 +2031,40 @@ class MyFarmApp {
         this._lastTargetCheck = now;
 
         const playerPos = this.player.root.position;
+
+        /*
+         * 🏠 داخل البيت: الأهداف الوحيدة هي عناصر الداخل (صندوق/باب خروج).
+         * أهداف المزرعة مخفية ولا يجوز تفاعلها من وراء الجدران.
+         */
+        if (this.inInterior) {
+            const item = this.houseInterior?.getNearestInteractable?.(playerPos, 2.4) || null;
+            const promptEl = document.getElementById('action-prompt');
+            const promptTitle = document.getElementById('prompt-title');
+            const promptDesc = document.getElementById('prompt-desc');
+            const promptBtn = document.getElementById('btn-prompt-action');
+
+            if (!item) {
+                this.activeTarget = null;
+                promptEl?.classList.remove('visible');
+                return;
+            }
+
+            this.activeTarget = { type: 'interior', id: item.id, label: item.label };
+            if (!promptEl || !promptTitle || !promptDesc || !promptBtn) return;
+
+            promptEl.classList.add('visible');
+            promptTitle.textContent = item.label;
+            if (item.id === 'exit') {
+                promptDesc.textContent = 'اخرج إلى المزرعة — ستجد نفسك أمام باب البيت';
+                promptBtn.textContent = 'خروج 🚪';
+                promptBtn.style.background = 'linear-gradient(180deg, #79d63c 0%, #46961a 100%)';
+            } else {
+                promptDesc.textContent = 'صندوق التخزين — يفتح حقيبتك (محاصيل/منتجات/عدة)';
+                promptBtn.textContent = item.button || 'فتح 🎒';
+                promptBtn.style.background = 'linear-gradient(180deg, #c48a3a 0%, #8a5520 100%)';
+            }
+            return;
+        }
 
         let closestTarget = null;
         let minDist = 3.6;
@@ -1733,10 +2149,13 @@ class MyFarmApp {
             promptEl.classList.add('visible');
 
             if (closestTarget.type === 'door') {
-                const open = closestTarget.door.open;
-                promptTitle.textContent = open ? '🚪 باب مفتوح' : `🚪 ${closestTarget.door.label}`;
-                promptDesc.textContent = open ? 'أغلق الباب لتأمين المبنى' : 'ادخل المبنى أو أغلقه بعد المرور';
-                promptBtn.textContent = open ? 'إغلاق الباب' : 'فتح الباب';
+                const door = closestTarget.door;
+                const isHouse = door.action === 'enter-house';
+                promptTitle.textContent = isHouse ? `🏠 ${door.label || 'باب البيت'}` : (door.open ? '🚪 باب مفتوح' : `🚪 ${door.label}`);
+                promptDesc.textContent = isHouse
+                    ? 'ادخل البيت — غرف وأثاث وصندوق تخزين'
+                    : (door.open ? 'أغلق الباب لتأمين المبنى' : 'ادخل المبنى أو أغلقه بعد المرور');
+                promptBtn.textContent = isHouse ? 'دخول البيت 🏠' : (door.open ? 'إغلاق الباب' : 'فتح الباب');
                 promptBtn.style.background = 'linear-gradient(180deg, #c48a3a 0%, #8a5520 100%)';
             } else if (closestTarget.type === 'market') {
                 promptTitle.textContent = '🛒 سوق المزرعة';
@@ -1762,21 +2181,40 @@ class MyFarmApp {
                 // الاسم العربي من GameData — لا مفاتيح إنجليزية في الواجهة.
                 const speciesName = getAnimal(animal?.animalId)?.name || 'حيوان';
                 promptTitle.textContent = ready ? '🧺 منتج جاهز!' : `${closestTarget.rig.animalIcon || '🐄'} ${speciesName}`;
-                promptDesc.textContent = ready ? 'استلم المنتج من الحيوان' : `يحتاج طعامًا (${ITEMS[getAnimal(animal?.animalId)?.feed || 'wheat']?.name || 'قمح'})`;
+                const feedDef = getAnimal(animal?.animalId);
+                const feedItemId = feedDef?.feedItem || feedDef?.feed || 'wheat';
+                promptDesc.textContent = ready
+                    ? 'استلم المنتج من الحيوان'
+                    : `يحتاج ${ITEMS[feedItemId]?.name || 'طعام'} — يُصنع في مطحنة الأعلاف`;
                 promptBtn.textContent = ready ? 'جمع 🧺' : 'إطعام 🌾';
                 promptBtn.style.background = ready
                     ? 'linear-gradient(180deg, #ffd54f 0%, #f5a623 100%)'
                     : 'linear-gradient(180deg, #79d63c 0%, #46961a 100%)';
             } else if (closestTarget.type === 'slot') {
                 const s = closestTarget.slot;
+
+                /*
+                 * مراتب التربة (Brief §1 «Soil quality»): نُظهر مرتبة
+                 * السماد في الوصف حتى يعرف اللاعب لماذا تختلف الجودة،
+                 * ونقترح التسميد حين تكون الخانة مبكرة وبلا سماد.
+                 */
+                const fertTier = s.fertilizer && s.fertilizer !== 'none' ? s.fertilizer : null;
+                const FERT_AR = { basic: 'سماد أساسي 🧪', quality: 'سماد فاخر ⚗️', deluxe: 'سماد ديلوكس ✨' };
+                const fertNote = fertTier ? ` · التربة: ${FERT_AR[fertTier] || fertTier}` : '';
+                const canFertilize = !fertTier &&
+                    (InventorySystem.count('fert_basic') > 0 ||
+                     InventorySystem.count('fert_quality') > 0 ||
+                     InventorySystem.count('fert_deluxe') > 0);
+
                 if (s.state === 'empty') {
                     promptTitle.textContent = '🌱 خانة تربة جاهزة';
-                    promptDesc.textContent = 'اختر بذرة من شريط الأدوات للزراعة';
+                    promptDesc.textContent = `اختر بذرة من شريط الأدوات للزراعة${fertNote}` +
+                        (canFertilize ? ' · لديك سماد — المتجر ← الأسمدة' : '');
                     promptBtn.textContent = 'زراعة 🌱';
                     promptBtn.style.background = 'linear-gradient(180deg, #5dbcf0 0%, #1e88e5 100%)';
                 } else if (s.state === 'growing') {
                     promptTitle.textContent = s.watered ? '⏳ المحصول ينمو...' : '💧 المحصول عطشان';
-                    promptDesc.textContent = s.watered ? 'انتظر اكتمال النضج' : 'قم بري المحصول لتسريع النمو';
+                    promptDesc.textContent = (s.watered ? 'انتظر اكتمال النضج' : 'قم بري المحصول لتسريع النمو') + fertNote;
                     promptBtn.textContent = s.watered ? 'ينمو...' : 'اسقِ ماء 💧';
                     promptBtn.style.background = 'linear-gradient(180deg, #00d2ff 0%, #0088cc 100%)';
                 } else if (s.state === 'withered') {
@@ -1786,7 +2224,7 @@ class MyFarmApp {
                     promptBtn.style.background = 'linear-gradient(180deg, #b98a4f 0%, #8a5f2a 100%)';
                 } else if (s.state === 'ready') {
                     promptTitle.textContent = '🧺 المحصول ناضج وجاهز!';
-                    promptDesc.textContent = 'الحصاد يدخل المحصول للمخزن — ثم بِعه';
+                    promptDesc.textContent = `الحصاد يدخل المحصول للصومعة — ثم بِعه${fertNote}`;
                     promptBtn.textContent = 'حصاد 🧺';
                     promptBtn.style.background = 'linear-gradient(180deg, #ffd54f 0%, #f5a623 100%)';
                 }
@@ -1863,15 +2301,24 @@ class MyFarmApp {
         this.checkNearTargets();
     }
 
-    onCropHarvested({ fieldId, slotIndex, crop, amount = 1, coins = 0, xp = 0, itemId }) {
+    onCropHarvested({ fieldId, slotIndex, crop, amount = 1, coins = 0, xp = 0, itemId,
+                      quality = 'normal', qualityName = '', qualityIcon = '' }) {
         this.cropBatches?.markDirty();
 
         if (crop) {
             const extra = coins > 0 ? ` (+${coins} 💰)` : '';
-            this.spawnFloatingFeedback(`🧺 +${amount} ${crop.name} في المخزن (+${xp} XP)${extra}`, '#4ade80');
+            // الجودة تظهر للاعب حتى يفهم أثر السماد (Brief §1 «Soil quality»)
+            const qualityNote = quality && quality !== 'normal'
+                ? ` ${qualityIcon || '✨'} ${qualityName || quality}`
+                : '';
+            this.spawnFloatingFeedback(
+                `🧺 +${amount} ${crop.name}${qualityNote} → الصومعة (+${xp} XP)${extra}`,
+                quality === 'platinum' ? '#7ee8fa' : quality === 'gold' ? '#ffd54f' : '#4ade80'
+            );
         }
 
         this.hud?.syncSeedCounts?.();
+        this.hud?.syncStorage?.();
         this.checkNearTargets(true);
     }
 
@@ -2100,6 +2547,23 @@ class MyFarmApp {
         return out;
     }
 
+    /**
+     * 🏠 حجز الكاميرا داخل الغرفة: لا اختراق للجدران/السقف، ولا
+     * ابتعاد عن اللاعب (المسافة أصغر أصلًا داخل البيت).
+     */
+    _clampCameraToInterior() {
+        const b = INTERIOR_BOUNDS;
+        const cam = this.cameraTargetPosition;
+        cam.x = THREE.MathUtils.clamp(cam.x, b.minX + 0.35, b.maxX - 0.35);
+        cam.z = THREE.MathUtils.clamp(cam.z, b.minZ + 0.35, b.maxZ - 0.35);
+        cam.y = THREE.MathUtils.clamp(cam.y, 1.05, INTERIOR_ROOM.wallHeight - 0.45);
+
+        // نقطة النظر تبقى داخل الغرفة هي الأخرى
+        this.cameraLookTarget.x = THREE.MathUtils.clamp(this.cameraLookTarget.x, b.minX, b.maxX);
+        this.cameraLookTarget.z = THREE.MathUtils.clamp(this.cameraLookTarget.z, b.minZ, b.maxZ);
+        this.cameraLookTarget.y = THREE.MathUtils.clamp(this.cameraLookTarget.y, 0.8, 2.4);
+    }
+
     _cameraPointBlocked(x, y, z) {
         const boxes = this.collision.boxes;
         for (let i = 0; i < boxes.length; i++) {
@@ -2145,10 +2609,14 @@ class MyFarmApp {
     }
 
     /* ============================================================
-       🌗 دورة النهار/الليل (P2)
-       TimeManager يدير الساعة (يوم = 12 دقيقة حقيقية)، ونحن نحرّك
-       الشمس ونمزج لون السماء/الضباب ونحدّث ساعة الـ HUD.
-       العمل رخيص لكنّه لا يحدث إلا عند تغيّر الدقيقة داخل اللعبة.
+       🌗 دورة النهار/الليل — من ساعة الجهاز الحقيقية (Brief §0.3/§2)
+       ------------------------------------------------------------
+       لا محاكاة زمنية: 1 ثانية = 1 ثانية. كل دقيقة حقيقية نُحدّث:
+         • اتجاه الشمس/القمر (نفس اتجاه القرص المرئي في SkyDome)
+         • شدة ولون الشمس + السماء المحيطة + ضوء التعبئة
+         • لون/كثافة الضباب من مزاج الفصل والساعة
+         • مصابيح الليل + نوافذ البيوت + فراء الحيوانات
+         • ساعة الـ HUD (الوقت + التاريخ + الفصل ثنائي اللغة)
        ============================================================ */
     applyDayNight() {
         if (!this.lights?.sun || !this.scene || typeof Time.getClock !== 'function') return;
@@ -2158,106 +2626,160 @@ class MyFarmApp {
         if (key === this._dayNightKey) return;
         this._dayNightKey = key;
 
-        const hourFloat = clock.hours + clock.minutes / 60;
-        // ارتفاع الشمس: 6ص أفق ← 12ظ رأسًا ← 6م أفق ← ليل تحت الأفق
-        const elevation = Math.sin(((hourFloat - 6) / 12) * Math.PI);
-        const dayFactor = Math.min(1, Math.max(0, (elevation - 0.08) / 0.5));
-        const duskFactor = Math.min(1, Math.max(0, (elevation + 0.14) / 0.30));
+        const sky = this.environment?.sky || null;
+        if (sky) {
+            // نبني لقطة السماء أولًا حتى نقرأ منها الاتجاه/العوامل
+            sky.update(clock, 0, this.player?.root?.position || null);
+        }
 
-        // --- الشمس تدور حول المزرعة ---
-        // نحفظ الإزاحة فقط؛ update() تضعها بالنسبة لموضع اللاعب كل إطار
-        // (كان update() يعيد تثبيت الشمس على (22,38,18) فيُلغي القوس تمامًا).
+        const hourFloat = Number.isFinite(clock.hourFloat)
+            ? clock.hourFloat
+            : clock.hours + (clock.minutes || 0) / 60;
+        const season = clock.season || 'summer';
+
+        // --- اتجاه الشمس: من القبة إن وُجدت، وإلا حساب من الساعة ---
+        if (!this._sunDir) this._sunDir = new THREE.Vector3();
+        if (sky && sky.sunDirection) {
+            this._sunDir.copy(sky.sunDirection);
+        } else {
+            const elevation = Math.sin(((hourFloat - 6) / 12) * Math.PI);
+            const angle = ((hourFloat - 6) / 12) * Math.PI;
+            this._sunDir.set(
+                Math.cos(angle) * 0.85,
+                Math.max(-0.45, elevation),
+                Math.sin(angle) * 0.45 - 0.25
+            ).normalize();
+        }
+
+        const dayFactor = sky ? sky.getDayFactor() : Math.min(1, Math.max(0, clock.sunFactor ?? 0.5));
+        const nightFactor = sky ? sky.getNightFactor() : 1 - dayFactor;
+        const isDay = this._sunDir.y > 0.02;
+
+        /*
+         * موضع الضوء: نهارًا من الشمس، ليلًا من القمر (الاتجاه المعاكس)
+         * حتى تبقى الظلال مقروءة دون أن تنقلب مع الغروب.
+         */
         const radius = 46;
-        const angle = ((hourFloat - 6) / 12) * Math.PI;
         if (!this._sunOffset) this._sunOffset = new THREE.Vector3(22, 38, 18);
-        this._sunOffset.set(
-            Math.cos(angle) * radius * 0.6,
-            Math.max(-14, elevation * radius),
-            Math.sin(angle) * radius * 0.35
-        );
+        const sx = isDay ? this._sunDir.x : -this._sunDir.x;
+        const sy = isDay ? Math.max(0.18, this._sunDir.y) : Math.max(0.22, -this._sunDir.y);
+        const sz = isDay ? this._sunDir.z : -this._sunDir.z;
+        this._sunOffset.set(sx * radius, sy * radius, sz * radius);
 
-        this.lights.sun.intensity = 0.18 + dayFactor * 1.95;
-        // الشتاء أبرد ضوءًا — صبغة مقروءة دون محاكاة طقس كاملة.
-        const isWinter = clock.season === 'winter';
-        this.lights.sun.color.setHex(dayFactor > 0.55 ? (isWinter ? 0xe9f1ff : 0xfff6e4) : 0xffb066);
+        // --- شدة ولون الشمس (مزاج الفصل) ---
+        this.lights.sun.intensity = isDay ? 0.28 + dayFactor * 1.95 : 0.3;
+        const sunTint = SUN_TINT_BY_SEASON[season] || 0xfff6e4;
+        if (!isDay) {
+            this.lights.sun.color.setHex(0x9fc0ff);           // ضوء قمر بارد
+        } else if (dayFactor > 0.55) {
+            this.lights.sun.color.setHex(sunTint);             // نهار الفصل
+        } else {
+            this.lights.sun.color.setHex(0xffab5e);            // شروق/غروب دافئ
+        }
 
         if (this.lights.ambient) {
+            const hemi = AMBIENT_BY_SEASON[season] || AMBIENT_BY_SEASON.summer;
+            this.lights.ambient.color.setHex(hemi.sky);
+            this.lights.ambient.groundColor.setHex(hemi.ground);
             this.lights.ambient.intensity = 0.42 + dayFactor * 1.0;
         }
         if (this.lights.fill) {
-            this.lights.fill.intensity = 0.12 + (1 - dayFactor) * 0.35;
+            this.lights.fill.intensity = 0.1 + (1 - dayFactor) * 0.32;
         }
 
-        // --- لون السماء: ليل ← غروب ← نهار ---
-        if (!this._skyNight) {
-            this._skyNight = new THREE.Color(0x132338);
-            this._skyDusk = new THREE.Color(0xf59e42);
-            this._skyDay = new THREE.Color(0x7bc4f0);
-            this._skyScratch = new THREE.Color();
+        // --- السماء/الضباب: خارج البيت فقط (الداخل غرفة مغلقة) ---
+        if (!this.inInterior) {
+            if (sky) {
+                if (this.scene.background && this.scene.background.isColor) {
+                    sky.getFogColor(this.scene.background);
+                } else {
+                    this.scene.background = sky.getFogColor(new THREE.Color());
+                }
+                if (this.scene.fog) {
+                    sky.getFogColor(this.scene.fog.color);
+                    const base = FOG_DENSITY_BY_SEASON[season] ?? 0.016;
+                    this.scene.fog.density = base + (1 - dayFactor) * 0.012;
+                    this._outsideFogDensity = this.scene.fog.density;
+                }
+            } else if (this.scene.background && this.scene.background.isColor) {
+                // احتياط بلا قبة: تدرّج ليل ← غروب ← نهار
+                if (!this._skyNight) {
+                    this._skyNight = new THREE.Color(0x132338);
+                    this._skyDusk = new THREE.Color(0xf59e42);
+                    this._skyDay = new THREE.Color(0x7bc4f0);
+                    this._skyScratch = new THREE.Color();
+                }
+                this._skyScratch.copy(this._skyNight).lerp(this._skyDusk, 1 - nightFactor);
+                this._skyScratch.lerp(this._skyDay, dayFactor);
+                this.scene.background.copy(this._skyScratch);
+                if (this.scene.fog) this.scene.fog.color.copy(this._skyScratch);
+            }
+
+            // --- مصابيح الليل + نوافذ البيوت + فراء الحيوانات ---
+            try {
+                this.environment?.buildings?.setNightFactor?.(nightFactor);
+                this.environment?.animals?.setNightFactor?.(nightFactor);
+            } catch (e) { /* المصابيح ديكور — لا تكسر الإقلاع */ }
         }
 
-        this._skyScratch.copy(this._skyNight).lerp(this._skyDusk, duskFactor);
-        this._skyScratch.lerp(this._skyDay, dayFactor);
-
-        if (this.scene.background && this.scene.background.isColor) {
-            this.scene.background.copy(this._skyScratch);
-        } else {
-            this.scene.background = this._skyScratch.clone();
-        }
-
-        // --- ضباب أكثف ليلًا ---
-        if (this.scene.fog) {
-            this.scene.fog.color.copy(this._skyScratch);
-            this.scene.fog.density = 0.012 + (1 - dayFactor) * 0.022;
-        }
-
-        // --- مصابيح الليل الدافئة (مطفأة نهارًا) ---
+        // --- الصبغة الموسمية (عند تغيّر الفصل فقط) ---
         try {
-            this.environment?.buildings?.setNightFactor?.(1 - dayFactor);
-        } catch (e) { /* المصابيح ديكور — لا تكسر الإقلاع */ }
-
-        // --- الصبغة الموسمية (عند تغيّر الموسم فقط) ---
-        try {
-            const season = clock.season || 'spring';
             if (season !== this._seasonApplied) {
                 this._seasonApplied = season;
                 this.environment?.setSeason?.(season);
+                sky?.setSeason?.(season);
             }
         } catch (e) { /* الصبغة ديكور — لا تكسر الإقلاع */ }
 
-        // --- ساعة الـ HUD + رمز الوقت ---
-        this.hud?.updateClock?.(
-            typeof Time.getClockLabel === 'function' ? Time.getClockLabel() : '',
-            typeof Time.getPhaseIcon === 'function' ? Time.getPhaseIcon() : '☀️',
-            clock.day,
-            clock.season
-        );
+        // --- ساعة الـ HUD: وقت + تاريخ حقيقي + فصل ثنائي اللغة ---
+        if (typeof this.hud?.applyClock === 'function') {
+            this.hud.applyClock(clock);
+        } else {
+            this.hud?.updateClock?.(
+                typeof Time.getClockLabel === 'function' ? Time.getClockLabel() : '',
+                typeof Time.getPhaseIcon === 'function' ? Time.getPhaseIcon() : '☀️',
+                clock.day,
+                season
+            );
+        }
+        this.hud?.syncStorage?.();
     }
 
     update(delta) {
         const elapsed = this.clock.getElapsedTime();
+        // لقطة الساعة الحقيقية (نفس الكائن الذي يقرأه applyDayNight)
+        const clock = typeof Time.getClock === 'function' ? Time.getClock() : null;
+        const playerPos = this.player?.root?.position || null;
 
+        // منطق المزرعة يستمر حتى داخل البيت (محاصيل/آلات/حيوانات)
         FarmingSystem.updateGrowth();
-        this.cropBatches?.update(delta, elapsed, this.fieldMeshes);
         this.applyDayNight();
-        this.productionYard?.update(delta, elapsed);
-        this.environment?.update(delta, elapsed);
 
-        this.clouds.forEach((cloud) => {
-            cloud.position.x += delta * 0.8;
-            if (cloud.position.x > 55) cloud.position.x = -55;
-        });
+        if (this.inInterior) {
+            // 🏠 الداخل: غرفة + سماء تتابع اللاعب (تُرى من النوافذ)
+            this.houseInterior?.update(delta);
+            this.environment?.updateSky?.(clock, delta, playerPos);
+        } else {
+            this.cropBatches?.update(delta, elapsed, this.fieldMeshes);
+            this.productionYard?.update(delta, elapsed);
+            this.environment?.update(delta, elapsed, clock, playerPos);
 
-        for (const entry of this.fieldMeshes.values()) {
-            if (!entry.fieldData.purchased && entry.lockGroup) {
-                entry.lockGroup.position.y = 1.25 + Math.sin(this.clock.getElapsedTime() * 2.5) * 0.08;
-                entry.lockGroup.rotation.y += delta * 0.6;
+            this.clouds.forEach((cloud) => {
+                cloud.position.x += delta * 0.8;
+                if (cloud.position.x > 55) cloud.position.x = -55;
+            });
+
+            for (const entry of this.fieldMeshes.values()) {
+                if (!entry.fieldData.purchased && entry.lockGroup) {
+                    entry.lockGroup.position.y = 1.25 + Math.sin(elapsed * 2.5) * 0.08;
+                    entry.lockGroup.rotation.y += delta * 0.6;
+                }
             }
-        }
 
-        this.animatedTrees.forEach((tree, idx) => {
-            tree.rotation.z = Math.sin(this.clock.getElapsedTime() * 1.5 + idx) * 0.015;
-        });
+            this.animatedTrees.forEach((tree, idx) => {
+                tree.rotation.z = Math.sin(elapsed * 1.5 + idx) * 0.015;
+            });
+        }
 
         if (this.player && this.player.root) {
             let inputX = this.joystickVector.x;
@@ -2341,6 +2863,9 @@ class MyFarmApp {
                 // تصادم الكاميرا: انسحاب تدريجي بدل الانغراس في الجدران.
                 this._resolveCameraCollision(this.cameraLookTarget, this._desiredCamPos, this.cameraTargetPosition);
                 if (this.cameraTargetPosition.y < 0.7) this.cameraTargetPosition.y = 0.7;
+
+                // 🏠 داخل البيت: الكاميرا لا تخرج من الغرفة ولا ترتفع فوق السقف
+                if (this.inInterior) this._clampCameraToInterior();
             }
 
             const lerpFactor = 1.0 - Math.exp(-delta * 9.5);

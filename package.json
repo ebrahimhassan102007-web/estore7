@@ -1,0 +1,16 @@
+{
+  "name": "my-farm-3d",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MY FARM 3D — Three.js modular farm (importmap-only, no bundler). This package.json exists ONLY for the headless QA harness in tests/.",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/smoke.mjs",
+    "test:logic": "node tests/smoke.mjs",
+    "test:world": "node tests/world.mjs",
+    "test:all": "node tests/smoke.mjs && node tests/world.mjs"
+  },
+  "devDependencies": {
+    "three": "0.160.0"
+  }
+}

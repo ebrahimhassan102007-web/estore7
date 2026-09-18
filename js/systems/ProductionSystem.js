@@ -6,6 +6,8 @@
 
 import { Events } from '../core/EventBus.js';
 import { GameState } from '../core/GameState.js';
+import { InventorySystem } from './InventorySystem.js';
+import { StorageSystem } from './StorageSystem.js';
 import {
     RECIPES,
     BUILDINGS,
@@ -13,6 +15,17 @@ import {
     getBuilding
 } from '../data/GameData.js';
 import { uuid } from '../utils/Utils.js';
+
+/**
+ * تكلفة الخانة الإضافية بالجواهر (Brief §1 «Economy»: diamonds are
+ * premium — speed-up / extra slots). لا نكسر اقتصاد الجواهر القائم،
+ * بل نضيف له مصرفين واضحين.
+ */
+const EXTRA_SLOT_GEM_COST = Object.freeze([5, 10, 20]);
+
+/** ثواني تُخصم من المؤقّت لكل جوهرة في التسريع. */
+const SPEEDUP_SECONDS_PER_GEM = 20;
+const SPEEDUP_GEM_COST = 2;
 
 class ProductionSystemService {
 
@@ -112,10 +125,11 @@ class ProductionSystemService {
             building.productionQueue = [];
         }
 
-        const queueLimit =
-            recipe.queueLimit ||
-            building.queueLimit ||
-            3;
+        /*
+         * قواعد الآلات (Brief §1 «Machines»): خانة واحدة في المرة
+         * افتراضيًا، وخانات إضافية تُفتح بالجواهر حتى `maxSlots`.
+         */
+        const queueLimit = this.getQueueLimit(building);
 
         if (
             building.productionQueue.length >=
@@ -123,7 +137,9 @@ class ProductionSystemService {
         ) {
             return {
                 success: false,
-                error: 'Production queue full'
+                error: 'طابور الآلة ممتلئ',
+                reason: 'queue-full',
+                queueLimit
             };
         }
 
@@ -341,15 +357,21 @@ class ProductionSystemService {
             };
         }
 
-        const index =
-            building.productionQueue.findIndex(
-                job => job.id === jobId
+        /*
+         * jobId اختياري: بدونه نجمع أول منتج جاهز على الآلة
+         * (يُستخدم من زر التفاعل في العالم ثلاثي الأبعاد)، ومعهُ
+         * نجمع وظيفة محددة (لوحة الإنتاج).
+         */
+        const index = jobId
+            ? building.productionQueue.findIndex(job => job.id === jobId)
+            : building.productionQueue.findIndex(
+                job => job.state === 'ready' || Date.now() >= (job.readyAt || Infinity)
             );
 
         if (index === -1) {
             return {
                 success: false,
-                error: 'Production not found'
+                error: jobId ? 'Production not found' : 'لا يوجد منتج جاهز على الآلة'
             };
         }
 
@@ -367,36 +389,23 @@ class ProductionSystemService {
         }
 
         // -----------------------------------------------------
-        // Check inventory capacity
+        // بوابة المخزن (Hay Day halt — Brief §1):
+        // المنتج المصنّع يدخل Barn؛ إن كان ممتلئًا يبقى المنتج
+        // على الآلة ولا يُفقد شيء.
         // -----------------------------------------------------
 
-        const inventory =
-            GameState.get(
-                'inventory'
-            );
+        const gate = StorageSystem.checkAdd(
+            job.outputItem,
+            job.outputAmount
+        );
 
-        const currentCount =
-            Object.values(
-                inventory.items
-            ).reduce(
-                (sum, item) =>
-                    sum + item.count,
-                0
-            );
-
-        if (
-            currentCount +
-            job.outputAmount >
-            inventory.maxCapacity
-        ) {
-
-            Events.emit(
-                'inventory:full'
-            );
+        if (gate.allowed <= 0) {
+            StorageSystem.reportFull(gate.store);
 
             return {
                 success: false,
-                error: 'Inventory full'
+                error: StorageSystem.fullMessage(gate.store),
+                reason: `${gate.store}_full`
             };
         }
 
@@ -404,27 +413,19 @@ class ProductionSystemService {
         // Add output
         // -----------------------------------------------------
 
-        const items =
-            GameState.get(
-                'inventory.items'
-            );
+        const added = InventorySystem.add(
+            job.outputItem,
+            gate.allowed,
+            'normal'
+        );
 
-        if (
-            !items[job.outputItem]
-        ) {
-            items[job.outputItem] = {
-                count: 0,
-                quality: 1
+        if (!added.success) {
+            return {
+                success: false,
+                error: added.error || `${gate.store}_full`,
+                reason: `${gate.store}_full`
             };
         }
-
-        items[job.outputItem].count +=
-            job.outputAmount;
-
-        GameState.set(
-            'inventory.items',
-            { ...items }
-        );
 
         // -----------------------------------------------------
         // Remove job
@@ -442,7 +443,7 @@ class ProductionSystemService {
 
         const output = {
             item: job.outputItem,
-            amount: job.outputAmount
+            amount: added.added
         };
 
         Events.emit(
@@ -710,6 +711,93 @@ class ProductionSystemService {
                 [...buildings]
             );
         }
+    }
+
+    // =========================================================
+    // SLOTS & SPEED-UP — مصارف الجواهر (Brief §1 «Economy»)
+    // =========================================================
+
+    /**
+     * عدد الخانات الفعلي لآلة: خانة واحدة افتراضيًا + ما فُتح بالجواهر.
+     * @param {object} building إدخال مبنى من farm.buildings
+     */
+    getQueueLimit(building) {
+        if (!building) return 1;
+        const def = getBuilding(building.typeId) || {};
+        const base = Math.max(1, Number(def.queueLimit) || Number(building.queueLimit) || 1);
+        const extra = Math.max(0, Number(building.extraSlots) || 0);
+        const max = Math.max(base, Number(def.maxSlots) || base);
+        return Math.min(max, base + extra);
+    }
+
+    /** تكلفة فتح الخانة التالية (جواهر) أو null إن بلغت الحد. */
+    getNextSlotCost(buildingId) {
+        const building = this.getBuilding(buildingId);
+        if (!building) return null;
+        const def = getBuilding(building.typeId) || {};
+        const extra = Math.max(0, Number(building.extraSlots) || 0);
+        const base = Math.max(1, Number(def.queueLimit) || 1);
+        const max = Math.max(base, Number(def.maxSlots) || base);
+        if (base + extra >= max) return null;
+        return EXTRA_SLOT_GEM_COST[Math.min(extra, EXTRA_SLOT_GEM_COST.length - 1)];
+    }
+
+    /** فتح خانة إنتاج إضافية بالجواهر. */
+    unlockSlot(buildingId) {
+        const buildings = GameState.get('farm.buildings') || [];
+        const building = buildings.find(b => b.id === buildingId);
+        if (!building) return { success: false, error: 'الآلة غير موجودة' };
+
+        const cost = this.getNextSlotCost(buildingId);
+        if (cost === null) {
+            return { success: false, error: 'بلغت أقصى عدد خانات لهذه الآلة' };
+        }
+
+        const gems = GameState.get('player.gems') || 0;
+        if (gems < cost) {
+            return { success: false, error: `تحتاج ${cost} 💎 لفتح خانة إضافية`, reason: 'not-enough-gems' };
+        }
+
+        GameState.set('player.gems', gems - cost);
+        building.extraSlots = (Number(building.extraSlots) || 0) + 1;
+        building.queueLimit = this.getQueueLimit(building);
+        GameState.set('farm.buildings', [...buildings]);
+
+        Events.emit('production:slot-unlocked', buildingId, building.queueLimit, cost);
+
+        return { success: true, slots: building.queueLimit, cost };
+    }
+
+    /** تسريع وظيفة قيد الإنتاج بالجواهر (بدل انتظار المؤقّت الحقيقي). */
+    speedUp(buildingId, jobId) {
+        const buildings = GameState.get('farm.buildings') || [];
+        const building = buildings.find(b => b.id === buildingId);
+        if (!building) return { success: false, error: 'الآلة غير موجودة' };
+
+        const job = (building.productionQueue || []).find(j => j.id === jobId);
+        if (!job) return { success: false, error: 'لا يوجد إنتاج بهذا المعرّف' };
+
+        const remaining = Math.max(0, (job.readyAt || 0) - Date.now());
+        if (remaining <= 0) {
+            return { success: false, error: 'الإنتاج جاهز بالفعل — استلمه' };
+        }
+
+        const gems = GameState.get('player.gems') || 0;
+        if (gems < SPEEDUP_GEM_COST) {
+            return { success: false, error: `تحتاج ${SPEEDUP_GEM_COST} 💎 للتسريع`, reason: 'not-enough-gems' };
+        }
+
+        GameState.set('player.gems', gems - SPEEDUP_GEM_COST);
+        job.readyAt = Math.max(
+            Date.now(),
+            (job.readyAt || Date.now()) - SPEEDUP_SECONDS_PER_GEM * SPEEDUP_GEM_COST * 1000
+        );
+        if (Date.now() >= job.readyAt) job.state = 'ready';
+        GameState.set('farm.buildings', [...buildings]);
+
+        Events.emit('production:speedup', buildingId, jobId, SPEEDUP_GEM_COST);
+
+        return { success: true, readyAt: job.readyAt, cost: SPEEDUP_GEM_COST };
     }
 
     // =========================================================

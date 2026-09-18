@@ -18,8 +18,15 @@ import { Events } from '../core/EventBus.js';
 import { GameState } from '../core/GameState.js';
 import { SaveManager } from '../core/SaveManager.js';
 import { InventorySystem } from './InventorySystem.js';
+import { StorageSystem } from './StorageSystem.js';
 import { XPSystem } from './XPSystem.js';
-import { ITEMS } from '../data/GameData.js';
+import {
+    ITEMS,
+    FERTILIZERS,
+    CROP_QUALITIES,
+    rollCropQuality,
+    fertilizerTierByItem
+} from '../data/GameData.js';
 
 export const CROPS_DEFINITIONS = Object.freeze({
     wheat: {
@@ -61,6 +68,26 @@ export const CROPS_DEFINITIONS = Object.freeze({
         xpReward: 45,
         sellPrice: 85,
         colors: { sprout: 0x76cc3f, growing: 0x4caf50, ready: 0xe53935 }
+    },
+    soybean: {
+        id: 'soybean',
+        name: 'فول صويا',
+        icon: '🫛',
+        seedId: 'soybean_seed',
+        growTime: 40,
+        xpReward: 60,
+        sellPrice: 95,
+        colors: { sprout: 0x8fd44a, growing: 0x5aa832, ready: 0xb6d94a }
+    },
+    sugarcane: {
+        id: 'sugarcane',
+        name: 'قصب سكر',
+        icon: '🎋',
+        seedId: 'sugarcane_seed',
+        growTime: 60,
+        xpReward: 80,
+        sellPrice: 110,
+        colors: { sprout: 0x93d95a, growing: 0x4f9c3a, ready: 0xd8c46a }
     }
 });
 
@@ -68,6 +95,9 @@ export const CROPS_DEFINITIONS = Object.freeze({
 const DEBUG_AUTO_SELL_ON_HARVEST = false;
 
 const SLOT_OFFSETS = [-1.2, 1.2];
+
+/** مراتب السماد من الأضعف للأقوى (لمنع downgrade). */
+const FERTILIZER_RANK = Object.freeze({ none: 0, basic: 1, quality: 2, deluxe: 3 });
 
 function freshSlots() {
     let i = 0;
@@ -83,7 +113,11 @@ function freshSlots() {
                 plantedAt: 0,
                 readyAt: 0,
                 witherAt: 0,
-                watered: false
+                watered: false,
+                // مراتب جودة التربة (Brief §1 «Soil quality tiers»):
+                // تُضاف على التربة المحروثة قبل الإنبات وتبقى بعد الحصاد.
+                fertilizer: 'none',
+                quality: null
             });
         }
     }
@@ -125,6 +159,8 @@ class FarmingSystemService {
             const s = raw[i];
             if (!s || typeof s !== 'object') continue;
             const cropType = CROPS_DEFINITIONS[s.cropType] ? s.cropType : null;
+            const fertilizer = FERTILIZERS[s.fertilizer] ? s.fertilizer : 'none';
+            const quality = CROP_QUALITIES[s.quality] ? s.quality : null;
             base[i] = {
                 ...base[i],
                 cropType,
@@ -132,6 +168,8 @@ class FarmingSystemService {
                 plantedAt: Number(s.plantedAt) || 0,
                 readyAt: Number(s.readyAt) || 0,
                 witherAt: Number(s.witherAt) || 0,
+                fertilizer,
+                quality,
                 state: cropType
                     ? (['growing', 'ready', 'withered'].includes(s.state) ? s.state : 'growing')
                     : 'empty'
@@ -211,6 +249,7 @@ class FarmingSystemService {
         slot.readyAt = now + growMs;
         slot.witherAt = now + growMs * 2; // ذبول إن لم تُسقَ
         slot.watered = false;
+        slot.quality = null;              // تُسحب عند الحصاد من مرتبة السماد
 
         this._persist(fieldId);
         Events.emit('crop:planted', { fieldId, slotIndex, cropType, slot });
@@ -232,9 +271,92 @@ class FarmingSystemService {
         return { success: true, slot };
     }
 
+    /* ========================================================
+       SOIL QUALITY TIERS — مراتب جودة التربة (Brief §1)
+       ------------------------------------------------------------
+       Normal / Basic / Quality / Deluxe:
+         • تُضاف على تربة محروثة فارغة (قبل الإنبات) أو على محصول
+           لم يتجاوز مرحلة البادرة بعد.
+         • المرتبة الأعلى تربح دائمًا — لا downgrade.
+         • السماد يبقى في الخانة بعد الحصاد (استثمار دائم في التربة).
+         • عند الحصاد تُسحب الجودة: normal → silver → gold،
+           والديلوكس وحده يفتح المرتبة الأعلى (platinum).
+       ======================================================== */
+
     /**
-     * الحصاد: يدخل المحصول للمخزن (+بذرة واحدة رجوعًا) ولا يدفع كوينز.
+     * تسميد خانة.
+     * @param {string} fieldId
+     * @param {number} slotIndex
+     * @param {string} tierOrItemId مرتبة ('basic') أو عنصر ('fert_basic')
+     */
+    fertilizeSlot(fieldId, slotIndex, tierOrItemId) {
+        if (!this.isFieldFarmable(fieldId)) {
+            return { success: false, error: 'هذه الأرض غير مجهزة للزراعة بعد' };
+        }
+
+        const slots = this.getOrCreateSlots(fieldId);
+        const slot = slots[slotIndex];
+        if (!slot) return { success: false, error: 'خانة غير موجودة' };
+
+        const tier = FERTILIZERS[tierOrItemId]
+            ? tierOrItemId
+            : (fertilizerTierByItem(tierOrItemId) || null);
+
+        if (!tier || tier === 'none') {
+            return { success: false, error: 'سماد غير معروف' };
+        }
+
+        const fert = FERTILIZERS[tier];
+        const itemId = fert.itemId;
+
+        // «قبل الإنبات قدر الإمكان»: خانة فارغة أو محصول في البادرة.
+        if (slot.state === 'growing') {
+            const progress = this.growthProgress(slot)?.progress ?? 1;
+            if (progress > 0.4) {
+                return { success: false, error: 'تأخرت — يُضاف السماد قبل الإنبات' };
+            }
+        } else if (slot.state === 'ready' || slot.state === 'withered') {
+            return { success: false, error: 'أضف السماد على تربة فارغة' };
+        }
+
+        if (FERTILIZER_RANK[tier] <= FERTILIZER_RANK[slot.fertilizer || 'none']) {
+            return { success: false, error: 'التربة مسمّدة بمرتبة أعلى بالفعل' };
+        }
+
+        if (InventorySystem.count(itemId) <= 0) {
+            return { success: false, error: `لا يوجد ${ITEMS[itemId]?.name || 'سماد'} في المخزن`, needFertilizer: true };
+        }
+
+        const removed = InventorySystem.remove(itemId, 1);
+        if (!removed.success) return { success: false, error: removed.error };
+
+        slot.fertilizer = tier;
+        if (slot.state === 'growing') {
+            // السماد المبكر ينعش النمو قليلًا (مكافأة التوقيت الصحيح).
+            slot.readyAt = Math.max(Date.now() + 500, slot.readyAt - 1500);
+        }
+
+        this._persist(fieldId);
+        Events.emit('crop:fertilized', { fieldId, slotIndex, tier, slot });
+
+        return { success: true, tier, name: fert.name, icon: fert.icon, slot };
+    }
+
+    /** مرتبة السماد في خانة (للواجهة/الرسم). */
+    getFertilizer(fieldId, slotIndex) {
+        const slot = this.getOrCreateSlots(fieldId)[slotIndex];
+        return FERTILIZERS[slot?.fertilizer || 'none'] || FERTILIZERS.none;
+    }
+
+    /**
+     * الحصاد: يدخل المحصول للصوامع (+بذرة واحدة رجوعًا) ولا يدفع كوينز.
      * العملات تأتي من البيع / الطلبات / السوق.
+     *
+     * قواعد Hay Day المطبّقة هنا:
+     *   • الصوامع ممتلئة ⇒ الحصاد ممنوع (لا ضياع صامت للمحصول).
+     *   • الجودة تُسحب من مرتبة السماد وتُخزَّن مع المحصول.
+     *   • السماد يبقى في التربة ⇒ «ازرع مرة أخرى» دائمًا متاح.
+     *   • فرصة سقوط مادة ترقية (مسامير/ألواح/شريط).
      */
     harvestSlot(fieldId, slotIndex) {
         const slots = this.getOrCreateSlots(fieldId);
@@ -253,18 +375,38 @@ class FarmingSystemService {
         }
 
         const cropDef = CROPS_DEFINITIONS[slot.cropType] || CROPS_DEFINITIONS.wheat;
-        const yieldAmount = 1 + (Math.random() < 0.25 ? 1 : 0); // 25% حصاد مزدوج
+        const fert = FERTILIZERS[slot.fertilizer || 'none'] || FERTILIZERS.none;
+        const doubleChance = 0.25 + (fert.yieldBonus || 0) * 0.5;
+        const yieldAmount = 1 + (Math.random() < doubleChance ? 1 : 0);
 
-        const added = InventorySystem.add(cropDef.id, yieldAmount, 1);
+        // بوابة الصوامع: المحاصيل الخام تدخل الصوامع فقط.
+        const gate = StorageSystem.checkAdd(cropDef.id, yieldAmount);
+        if (gate.allowed <= 0) {
+            StorageSystem.reportFull('silo');
+            return {
+                success: false,
+                error: StorageSystem.fullMessage('silo'),
+                reason: 'silo_full'
+            };
+        }
+
+        const quality = rollCropQuality(slot.fertilizer || 'none');
+        const added = InventorySystem.add(cropDef.id, gate.allowed, quality);
         if (!added.success) {
-            return { success: false, error: added.error || 'inventory_full' };
+            return { success: false, error: added.error || 'silo_full' };
         }
         // رجوع البذرة حتى تبقى الحلقة مستدامة بدون متجر
-        InventorySystem.add(cropDef.seedId, added.added, 1);
+        InventorySystem.add(cropDef.seedId, added.added, 'normal');
 
-        XPSystem.addXp(cropDef.xpReward, 'harvest');
+        const qualityDef = CROP_QUALITIES[quality] || CROP_QUALITIES.normal;
+        const xp = Math.round(cropDef.xpReward * qualityDef.xpMultiplier);
+        XPSystem.addXp(xp, 'harvest');
+
         const stats = GameState.get('stats') || {};
         GameState.set('stats.totalHarvests', (stats.totalHarvests || 0) + added.added);
+
+        // مادة ترقية من الحصاد (Brief §1 «Upgrade both with supplies»).
+        const drop = StorageSystem.rollSupplyDrop('harvest');
 
         let coins = 0;
         if (this.autoSellOnHarvest) {
@@ -280,11 +422,25 @@ class FarmingSystemService {
             crop: cropDef,
             itemId: cropDef.id,
             amount: added.added,
+            quality,
+            qualityName: qualityDef.name,
+            qualityIcon: qualityDef.icon,
+            supplyDrop: drop,
             coins,
-            xp: cropDef.xpReward
+            xp
         });
 
-        return { success: true, crop: cropDef, amount: added.added, coins, xp: cropDef.xpReward };
+        return {
+            success: true,
+            crop: cropDef,
+            amount: added.added,
+            quality,
+            qualityName: qualityDef.name,
+            qualityIcon: qualityDef.icon,
+            supplyDrop: drop,
+            coins,
+            xp
+        };
     }
 
     /** ازرع في أول خانة فارغة (مفيد للزراعة السريعة من الـ Hotbar). */
@@ -318,6 +474,8 @@ class FarmingSystemService {
         slot.plantedAt = 0;
         slot.readyAt = 0;
         slot.witherAt = 0;
+        slot.quality = null;
+        // السماد استثمار دائم في التربة — يبقى بعد الحصاد (Brief §1).
     }
 
     /**

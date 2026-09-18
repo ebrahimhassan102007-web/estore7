@@ -6,6 +6,7 @@
 import { Events } from '../core/EventBus.js';
 import { GameState } from '../core/GameState.js';
 import { ITEMS, ECONOMY } from '../data/GameData.js';
+import { StorageSystem } from './StorageSystem.js';
 import { uuid, randPick, randInt, randFloat } from '../utils/Utils.js';
 
 class MarketSystemService {
@@ -463,6 +464,15 @@ class MarketSystemService {
                     'stats.totalSales',
                     (stats.totalSales || 0) + earnings
                 );
+
+                /*
+                 * زائر الكشك قد يترك مادة ترقية (Brief §1: «upgrade both
+                 * with supply items from harvest/orders/visitors»).
+                 * المصدر 'stallSale' له احتمال خاص في STORAGE_CONFIG.
+                 */
+                try {
+                    StorageSystem.rollSupplyDrop('stallSale');
+                } catch (e) { /* المكافأة إضافية — لا تكسر البيع */ }
 
                 continue;
             }

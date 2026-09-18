@@ -229,6 +229,47 @@ export function mergeGroupChildren(parent, options = {}) {
     return mergeMeshes(meshes, options);
 }
 
+/**
+ * دمج كل عقدة ساكنة في الشجرة (Groups وMeshes على حد سواء).
+ * ------------------------------------------------------------
+ * mergeDeep يدمج داخل المجموعات فقط، فتبقى الأجزاء المعلقة على
+ * Mesh (مثل تفاصيل الرأس على مجسم الرأس) كنداءات رسم منفصلة.
+ * هذه الدالة تمر على كل عقدة لها ≥2 ابن قابل للدمج وتدمجهم.
+ *
+ * الأجزاء المتحركة تُستثنى تلقائيًا (children.length > 0 أو
+ * userData.noMerge أو مواد شفافة)، والمحاور (pivots) تبقى كما هي.
+ *
+ * @returns {{nodes:number, before:number, after:number}}
+ */
+export function mergeAllStatic(root, { vertexColors = true, name = '' } = {}) {
+    if (!root) return { nodes: 0, before: 0, after: 0 };
+
+    // لقطة مسبقة: الدمج يغيّر قائمة الأبناء أثناء المرور
+    const nodes = [];
+    root.traverse((o) => nodes.push(o));
+
+    let before = 0;
+    let after = 0;
+    let touched = 0;
+
+    for (const node of nodes) {
+        const candidates = node.children.filter(mergeable);
+        if (candidates.length < 2) continue;
+
+        const res = mergeMeshes(candidates, {
+            vertexColors,
+            name: name || `${root.name || 'node'}-${touched}`
+        });
+        if (res.merged) {
+            before += res.before;
+            after += res.after;
+            touched += 1;
+        }
+    }
+
+    return { nodes: touched, before, after };
+}
+
 /*
  * دمج شجرة كاملة في mesh واحد — للأجزاء التي تتحرك ككل
  * (مثل دوار الطاحونة): تُخبز تحويلات كل mesh بالنسبة إلى الجذر،

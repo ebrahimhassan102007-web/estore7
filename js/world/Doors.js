@@ -22,10 +22,17 @@ export class InteractiveDoor {
         id = 'door',
         label = 'باب',
         collider = null,
-        interactOffset = { x: 0, y: 0, z: 0.55 }
+        interactOffset = { x: 0, y: 0, z: 0.55 },
+        action = null
     } = {}) {
         this.id = id;
         this.label = label;
+        /*
+         * `action` يربط الباب بفعل في main.js بدل الفتح/الإغلاق فقط
+         * (مثل 'enter-house' لباب البيت). الباب يبقى مفصلة حقيقية —
+         * الفعل يُنفَّذ فوق الحركة، لا بدلها (Brief §2 «not a fake wall»).
+         */
+        this.action = action;
         this.open = false;
         this.angle = 0;
         this.targetAngle = 0;

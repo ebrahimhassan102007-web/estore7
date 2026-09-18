@@ -38,6 +38,7 @@
 
 #game-hud-overlay button,
 #game-hud-overlay .hud-level-card,
+#game-hud-overlay .hud-storage-pill,
 #game-hud-overlay .hud-currency-item,
 #game-hud-overlay .hud-time-pill,
 #game-hud-overlay .hud-missions-panel,
@@ -145,12 +146,105 @@
   direction: ltr;
 }
 
+/* ---------------------- العمود الأوسط ---------------------- */
+.hud-center-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
 /* --------------------------- currencies --------------------------- */
 .hud-currencies {
   display: flex;
   align-items: center;
   gap: 6px;
   direction: ltr;
+}
+
+/* ------------------ 🌾 الصومعة / 🧺 الحظيرة ------------------ */
+.hud-storage-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  direction: ltr;
+}
+
+.hud-storage-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px 2px 6px;
+  border-radius: 999px;
+  border: 2px solid #d9a441;
+  background: rgba(30, 20, 8, 0.86);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+  color: #fff3d6;
+  cursor: pointer;
+  min-width: 104px;
+}
+
+.hud-storage-pill:active { transform: scale(0.96); }
+
+.hud-storage-pill.barn { border-color: #a8d26a; }
+
+.hud-storage-pill .st-icon { font-size: 13px; line-height: 1; }
+
+.hud-storage-pill .st-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.hud-storage-pill .st-track {
+  display: block;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  overflow: hidden;
+}
+
+.hud-storage-pill .st-fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ffd75e, #f0a51c);
+  transition: width 0.3s ease;
+}
+
+.hud-storage-pill.barn .st-fill {
+  background: linear-gradient(90deg, #b7e86f, #6fb52a);
+}
+
+/* تحذير قرب الامتلاء ثم امتلاء كامل */
+.hud-storage-pill.is-tight { border-color: #ff9f43; }
+.hud-storage-pill.is-tight .st-fill { background: linear-gradient(90deg, #ffb347, #ff7b00); }
+
+.hud-storage-pill.is-full {
+  border-color: #ff5252;
+  animation: hud-storage-full 1.4s ease-in-out infinite;
+}
+.hud-storage-pill.is-full .st-fill { background: linear-gradient(90deg, #ff6b6b, #d32f2f); }
+
+@keyframes hud-storage-full {
+  0%, 100% { box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35); }
+  50% { box-shadow: 0 0 0 3px rgba(255, 82, 82, 0.35), 0 3px 8px rgba(0, 0, 0, 0.35); }
+}
+
+.hud-storage-pill .st-text {
+  font-size: 9px;
+  font-weight: 800;
+  color: #ffe6b0;
+  direction: ltr;
+  text-align: start;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .hud-currency-item {
@@ -228,6 +322,27 @@
 }
 
 .hud-time-pill .season .dot { opacity: 0.6; }
+
+.hud-time-pill .season .season-en {
+  opacity: 0.72;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  direction: ltr;
+}
+
+/* التاريخ التقويمي الحقيقي تحت الساعة */
+.hud-time-pill .date {
+  font-size: 8px;
+  font-weight: 700;
+  color: #cfe6ff;
+  opacity: 0.85;
+  direction: rtl;
+  white-space: nowrap;
+  max-width: 132px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* ============================ MISSIONS ============================ */
 .hud-missions-toggle {
@@ -560,6 +675,13 @@
   .hud-time-pill { min-width: 0; padding: 2px 7px; }
   .hud-time-pill .clock { font-size: 10px; }
   .hud-time-pill .season { font-size: 8px; }
+  .hud-time-pill .season .season-en { display: none; }
+  .hud-time-pill .date { font-size: 7px; max-width: 92px; }
+
+  .hud-storage-pill { min-width: 0; padding: 1px 5px; gap: 3px; }
+  .hud-storage-pill .st-icon { font-size: 11px; }
+  .hud-storage-pill .st-track { height: 5px; }
+  .hud-storage-pill .st-text { font-size: 8px; }
 
   .hud-missions-toggle { width: 40px; height: 40px; font-size: 18px; }
   .hud-missions-panel { width: 158px; top: calc(max(10px, env(safe-area-inset-top)) + 98px); }
@@ -768,6 +890,44 @@
 }
 
 #game-hud-overlay .shop-item.locked { opacity: 0.62; }
+
+/* 🌾🧺 شريط امتلاء المخزن داخل لوحة الترقية */
+#game-hud-overlay .storage-bar {
+  display: block;
+  width: 100%;
+  height: 10px;
+  margin: 4px 0 3px;
+  background: rgba(70, 35, 15, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+#game-hud-overlay .storage-fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ffd75e, #f0a51c);
+  transition: width 0.35s ease;
+}
+
+#game-hud-overlay .storage-fill.is-full {
+  background: linear-gradient(90deg, #ff6b6b, #d32f2f);
+}
+
+/* مواد الترقية: أخضر عند التوفر، أحمر عند النقص */
+#game-hud-overlay .supply-ok {
+  color: #2f7a1c;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+#game-hud-overlay .supply-missing {
+  color: #c62828;
+  font-weight: 900;
+  white-space: nowrap;
+}
 
 #game-hud-overlay .shop-icon { font-size: 26px; }
 

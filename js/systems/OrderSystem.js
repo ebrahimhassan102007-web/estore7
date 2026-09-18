@@ -4,6 +4,8 @@
  */
 
 import { Events } from '../core/EventBus.js';
+import { StorageSystem } from './StorageSystem.js';
+import { InventorySystem } from './InventorySystem.js';
 import { GameState } from '../core/GameState.js';
 import {
     ORDER_TEMPLATES,
@@ -529,6 +531,10 @@ class OrderSystemService {
         // Remove required items
         // -----------------------------------------------------
 
+        /*
+         * الخصم عبر InventorySystem (لا كتابة يدوية) حتى تبقى مراتب
+         * الجودة وسعة الصوامع/المخزن متسقة مع بقية الأنظمة.
+         */
         for (
             const requirement
             of order.items
@@ -541,22 +547,8 @@ class OrderSystemService {
             const amount =
                 requirement.amount || 1;
 
-            inventory[itemId].count -=
-                amount;
-
-            if (
-                inventory[itemId].count <= 0
-            ) {
-                delete inventory[itemId];
-            }
+            InventorySystem.remove(itemId, amount);
         }
-
-        GameState.set(
-            'inventory.items',
-            {
-                ...inventory
-            }
-        );
 
 
         // -----------------------------------------------------
@@ -627,11 +619,18 @@ class OrderSystemService {
         // Events
         // -----------------------------------------------------
 
+        /*
+         * مكافأة مواد الترقية (Brief §1 «Storage»): الطلبات أحد
+         * مصادر المسامير/الألواح/الشريط لتوسيع الصوامع والمخزن.
+         */
+        const supplyDrop = StorageSystem.rollSupplyDrop('order');
+
         Events.emit(
             'order:completed',
             orderId,
             order.rewardCoins,
-            order.rewardXp
+            order.rewardXp,
+            supplyDrop
         );
 
         Events.emit(
@@ -659,7 +658,9 @@ class OrderSystemService {
                     order.rewardCoins,
 
                 xp:
-                    order.rewardXp
+                    order.rewardXp,
+
+                supplyDrop
             }
         };
     }

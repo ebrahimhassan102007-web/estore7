@@ -14,6 +14,12 @@
  * ============================================================
  */
 
+/*
+ * خطة الـ zoning الواحدة (FarmLayout) — بلا THREE وبلا استيراد عكسي،
+ * فتبقى GameData قابلة للاختبار في Node ومصدرًا واحدًا للمواضع.
+ */
+import { PRODUCTION_COURT } from '../world/FarmLayout.js';
+
 /* ============================================================
    CROPS — مرآة CROPS_DEFINITIONS في FarmingSystem.js
    ============================================================ */
@@ -62,6 +68,28 @@ export const CROPS = Object.freeze({
         xpReward: 45,
         sellPrice: 85,
         colors: { sprout: 0x76cc3f, growing: 0x4caf50, ready: 0xe53935 }
+    },
+    soybean: {
+        id: 'soybean',
+        name: 'فول صويا',
+        nameEn: 'Soybean',
+        icon: '🫛',
+        seedId: 'soybean_seed',
+        growTime: 40,
+        xpReward: 60,
+        sellPrice: 95,
+        colors: { sprout: 0x8fd44a, growing: 0x5aa832, ready: 0xb6d94a }
+    },
+    sugarcane: {
+        id: 'sugarcane',
+        name: 'قصب سكر',
+        nameEn: 'Sugarcane',
+        icon: '🎋',
+        seedId: 'sugarcane_seed',
+        growTime: 60,
+        xpReward: 80,
+        sellPrice: 110,
+        colors: { sprout: 0x93d95a, growing: 0x4f9c3a, ready: 0xd8c46a }
     }
 });
 
@@ -71,35 +99,187 @@ export const CROPS = Object.freeze({
    ============================================================ */
 
 export const ITEMS = Object.freeze({
-    // ---- Raw crops ----
+    // ---- Raw crops (SILO — صوامع المحاصيل الخام) ----
     wheat:       { id: 'wheat',       name: 'قمح',            nameEn: 'Wheat',        icon: '🌾', category: 'crop',     sellPrice: 25 },
     corn:        { id: 'corn',        name: 'ذرة',            nameEn: 'Corn',         icon: '🌽', category: 'crop',     sellPrice: 45 },
     carrot:      { id: 'carrot',      name: 'جزر',            nameEn: 'Carrot',       icon: '🥕', category: 'crop',     sellPrice: 65 },
     tomato:      { id: 'tomato',      name: 'طماطم',          nameEn: 'Tomato',       icon: '🍅', category: 'crop',     sellPrice: 85 },
+    soybean:     { id: 'soybean',     name: 'فول صويا',       nameEn: 'Soybean',      icon: '🫛', category: 'crop',     sellPrice: 95 },
+    sugarcane:   { id: 'sugarcane',   name: 'قصب سكر',        nameEn: 'Sugarcane',    icon: '🎋', category: 'crop',     sellPrice: 110 },
 
-    // ---- Seeds ----
-    wheat_seed:  { id: 'wheat_seed',  name: 'بذور القمح',     nameEn: 'Wheat Seeds',  icon: '🌱', category: 'seed',     sellPrice: 5 },
-    corn_seed:   { id: 'corn_seed',   name: 'بذور الذرة',     nameEn: 'Corn Seeds',   icon: '🌱', category: 'seed',     sellPrice: 9 },
-    carrot_seed: { id: 'carrot_seed', name: 'بذور الجزر',     nameEn: 'Carrot Seeds', icon: '🌱', category: 'seed',     sellPrice: 13 },
-    tomato_seed: { id: 'tomato_seed', name: 'بذور الطماطم',   nameEn: 'Tomato Seeds', icon: '🌱', category: 'seed',     sellPrice: 17 },
+    // ---- Seeds (SILO) ----
+    wheat_seed:     { id: 'wheat_seed',     name: 'بذور القمح',     nameEn: 'Wheat Seeds',     icon: '🌱', category: 'seed', sellPrice: 5 },
+    corn_seed:      { id: 'corn_seed',      name: 'بذور الذرة',     nameEn: 'Corn Seeds',      icon: '🌱', category: 'seed', sellPrice: 9 },
+    carrot_seed:    { id: 'carrot_seed',    name: 'بذور الجزر',     nameEn: 'Carrot Seeds',    icon: '🌱', category: 'seed', sellPrice: 13 },
+    tomato_seed:    { id: 'tomato_seed',    name: 'بذور الطماطم',   nameEn: 'Tomato Seeds',    icon: '🌱', category: 'seed', sellPrice: 17 },
+    soybean_seed:   { id: 'soybean_seed',   name: 'بذور الصويا',    nameEn: 'Soybean Seeds',   icon: '🌱', category: 'seed', sellPrice: 21 },
+    sugarcane_seed: { id: 'sugarcane_seed', name: 'عُقل القصب',     nameEn: 'Sugarcane Sets',  icon: '🌱', category: 'seed', sellPrice: 25 },
 
-    // ---- Grain Mill products ----
+    // ---- Grain Mill products (BARN) ----
     flour:        { id: 'flour',        name: 'دقيق',          nameEn: 'Flour',        icon: '🥣', category: 'milled',   sellPrice: 90 },
     corn_flour:   { id: 'corn_flour',   name: 'دقيق الذرة',    nameEn: 'Corn Flour',   icon: '🌽', category: 'milled',   sellPrice: 150 },
-    chicken_feed: { id: 'chicken_feed', name: 'علف الدجاج',    nameEn: 'Chicken Feed', icon: '🫘', category: 'milled',   sellPrice: 35 },
+    sugar:        { id: 'sugar',        name: 'سكر',           nameEn: 'Sugar',        icon: '🍬', category: 'milled',   sellPrice: 180 },
 
-    // ---- Bakery products ----
+    // ---- Feed Mill products (BARN) — علف لكل نوع حيوان ----
+    chicken_feed: { id: 'chicken_feed', name: 'علف الدجاج',    nameEn: 'Chicken Feed', icon: '🫘', category: 'feed',     sellPrice: 35 },
+    cow_feed:     { id: 'cow_feed',     name: 'علف الأبقار',   nameEn: 'Cow Feed',     icon: '🌿', category: 'feed',     sellPrice: 60 },
+    sheep_feed:   { id: 'sheep_feed',   name: 'علف الأغنام',   nameEn: 'Sheep Feed',   icon: '🍃', category: 'feed',     sellPrice: 55 },
+    pig_feed:     { id: 'pig_feed',     name: 'علف الخنازير',  nameEn: 'Pig Feed',     icon: '🥔', category: 'feed',     sellPrice: 50 },
+
+    // ---- Bakery products (BARN) ----
     bread:         { id: 'bread',         name: 'خبز',          nameEn: 'Bread',        icon: '🍞', category: 'baked',    sellPrice: 260 },
     corn_bread:    { id: 'corn_bread',    name: 'خبز الذرة',    nameEn: 'Corn Bread',   icon: '🥖', category: 'baked',    sellPrice: 420 },
     tomato_pastry: { id: 'tomato_pastry', name: 'فطيرة الطماطم', nameEn: 'Tomato Pie',  icon: '🥧', category: 'baked',    sellPrice: 480 },
     carrot_cake:   { id: 'carrot_cake',   name: 'كيك الجزر',    nameEn: 'Carrot Cake',  icon: '🍰', category: 'baked',    sellPrice: 650 },
 
-    // ---- Animal products ----
+    // ---- Animal products (BARN) ----
     egg:  { id: 'egg',  name: 'بيض',  nameEn: 'Egg',  icon: '🥚', category: 'animal', sellPrice: 60 },
     milk: { id: 'milk', name: 'حليب', nameEn: 'Milk', icon: '🥛', category: 'animal', sellPrice: 140 },
     wool: { id: 'wool', name: 'صوف',  nameEn: 'Wool', icon: '🧶', category: 'animal', sellPrice: 220 },
-    truffle: { id: 'truffle', name: 'كمأة', nameEn: 'Truffle', icon: '🍄', category: 'animal', sellPrice: 180 }
+    truffle: { id: 'truffle', name: 'كمأة', nameEn: 'Truffle', icon: '🍄', category: 'animal', sellPrice: 180 },
+
+    // ---- Dairy products (BARN) — حليب ← قشطة ← زبدة ← جبن ----
+    cream:  { id: 'cream',  name: 'قشطة',  nameEn: 'Cream',  icon: '🍶', category: 'dairy', sellPrice: 260 },
+    butter: { id: 'butter', name: 'زبدة',  nameEn: 'Butter', icon: '🧈', category: 'dairy', sellPrice: 420 },
+    cheese: { id: 'cheese', name: 'جبن',   nameEn: 'Cheese', icon: '🧀', category: 'dairy', sellPrice: 640 },
+
+    // ---- Supplies (BARN) — مواد ترقية الصوامع/المخزن ----
+    nail:      { id: 'nail',      name: 'مسامير',    nameEn: 'Nails',     icon: '🔩', category: 'supply', sellPrice: 0 },
+    plank:     { id: 'plank',     name: 'ألواح خشب', nameEn: 'Planks',    icon: '🪵', category: 'supply', sellPrice: 0 },
+    duct_tape: { id: 'duct_tape', name: 'شريط لاصق', nameEn: 'Duct Tape', icon: '🎗️', category: 'supply', sellPrice: 0 },
+
+    // ---- Fertilizers (BARN) — مراتب جودة التربة ----
+    fert_basic:    { id: 'fert_basic',    name: 'سماد أساسي',  nameEn: 'Basic Fertilizer',    icon: '🧪', category: 'fertilizer', sellPrice: 40 },
+    fert_quality:  { id: 'fert_quality',  name: 'سماد فاخر',   nameEn: 'Quality Fertilizer',  icon: '⚗️', category: 'fertilizer', sellPrice: 90 },
+    fert_deluxe:   { id: 'fert_deluxe',   name: 'سماد ديلوكس', nameEn: 'Deluxe Fertilizer',   icon: '✨', category: 'fertilizer', sellPrice: 180 }
 });
+
+/* ============================================================
+   STORAGE ROUTING — الصوامع مقابل المخزن (Hay Day silo/barn)
+   ------------------------------------------------------------
+   القاعدة الوحيدة المعتمدة في كل الأنظمة:
+     المحاصيل الخام + البذور  ⇒ الصوامع (Silo)
+     كل شيء آخر               ⇒ المخزن (Barn)
+   ============================================================ */
+
+export const SILO_CATEGORIES = Object.freeze(['crop', 'seed']);
+
+/** @returns {'silo'|'barn'} */
+export function getStorageOf(itemId) {
+    const def = itemId ? ITEMS[itemId] : null;
+    if (!def) return 'barn';
+    return SILO_CATEGORIES.includes(def.category) ? 'silo' : 'barn';
+}
+
+/* ============================================================
+   CROP QUALITY — مراتب جودة المحصول (Stardew-inspired)
+   ------------------------------------------------------------
+   normal → silver → gold، والسماد «ديلكس» يفتح المرتبة الأعلى
+   (platinum). الجودة تضاعف سعر البيع والخبرة.
+   ============================================================ */
+
+export const CROP_QUALITIES = Object.freeze({
+    normal:    { id: 'normal',    name: 'عادي',   nameEn: 'Normal',    icon: '⚪', priceMultiplier: 1.0,  xpMultiplier: 1.0  },
+    silver:    { id: 'silver',    name: 'فضي',    nameEn: 'Silver',    icon: '🥈', priceMultiplier: 1.35, xpMultiplier: 1.25 },
+    gold:      { id: 'gold',      name: 'ذهبي',   nameEn: 'Gold',      icon: '🥇', priceMultiplier: 1.8,  xpMultiplier: 1.6  },
+    platinum:  { id: 'platinum',  name: 'بلاتيني', nameEn: 'Platinum', icon: '💠', priceMultiplier: 2.6,  xpMultiplier: 2.2  }
+});
+
+/**
+ * مراتب السماد: كل مرتبة ترفع احتمالات الجودة.
+ * `chances` مرتبة [normal, silver, gold, platinum] ومجموعها 1.
+ * `stage` = آخر مرحلة نمو يسمح فيها الإضافة (قبل الإنبات = sprout).
+ */
+export const FERTILIZERS = Object.freeze({
+    none: {
+        id: 'none',
+        itemId: null,
+        name: 'تربة عادية',
+        nameEn: 'Normal Soil',
+        icon: '🟫',
+        chances: [0.88, 0.12, 0.0, 0.0],
+        yieldBonus: 0
+    },
+    basic: {
+        id: 'basic',
+        itemId: 'fert_basic',
+        name: 'سماد أساسي',
+        nameEn: 'Basic Fertilizer',
+        icon: '🧪',
+        chances: [0.62, 0.30, 0.08, 0.0],
+        yieldBonus: 0.1
+    },
+    quality: {
+        id: 'quality',
+        itemId: 'fert_quality',
+        name: 'سماد فاخر',
+        nameEn: 'Quality Fertilizer',
+        icon: '⚗️',
+        /*
+         * المرتبة العليا (بلاتيني) حصرية للديلوكس — Brief §1 «Fields»:
+         * «normal→silver→gold, deluxe unlocks top tier».
+         */
+        chances: [0.36, 0.42, 0.22, 0.0],
+        yieldBonus: 0.2
+    },
+    deluxe: {
+        id: 'deluxe',
+        itemId: 'fert_deluxe',
+        name: 'سماد ديلوكس',
+        nameEn: 'Deluxe Fertilizer',
+        icon: '✨',
+        // ديلوكس يفتح المرتبة الأعلى (بلاتيني) — Brief §1 «Fields».
+        chances: [0.18, 0.34, 0.32, 0.16],
+        yieldBonus: 0.35
+    }
+});
+
+/** مرتبة السماد من معرّف العنصر في المخزن. */
+export function fertilizerTierByItem(itemId) {
+    for (const tier of Object.values(FERTILIZERS)) {
+        if (tier.itemId === itemId) return tier.id;
+    }
+    return null;
+}
+
+/** سحب جودة من مرتبة السماد. @returns {'normal'|'silver'|'gold'|'platinum'} */
+export function rollCropQuality(tierId = 'none', random = Math.random) {
+    const tier = FERTILIZERS[tierId] || FERTILIZERS.none;
+    const roll = Math.min(0.999999, Math.max(0, random()));
+    const order = ['normal', 'silver', 'gold', 'platinum'];
+    let acc = 0;
+    for (let i = 0; i < order.length; i++) {
+        acc += tier.chances[i] || 0;
+        if (roll < acc) return order[i];
+    }
+    return 'normal';
+}
+
+/* ============================================================
+   STORAGE UPGRADES — ترقية الصوامع/المخزن بمواد البناء
+   ------------------------------------------------------------
+   كل مستوى يضيف +60 خانة، والتكلفة تتصاعد (Hay Day style).
+   المواد تُكسب من: الحصاد، تسليم الطلبات، زوّار الكشك.
+   ============================================================ */
+
+export const STORAGE_CONFIG = Object.freeze({
+    baseCapacity: 150,
+    capacityPerLevel: 60,
+    maxLevel: 20,
+    /** مواد الترقية لكل من الصوامع والمخزن — نفس الجدول. */
+    costFor(level) {
+        const next = Math.max(1, level);
+        return {
+            nail: 2 + next,
+            plank: 1 + Math.floor(next / 2),
+            duct_tape: next >= 4 ? Math.floor(next / 4) : 0
+        };
+    },
+    /** نسبة سقوط مادة ترقية عند الحصاد/تسليم طلب. */
+    dropChance: { harvest: 0.07, order: 0.45, stallSale: 0.22 },
+    dropPool: ['nail', 'plank', 'duct_tape']
+});
+
 
 /* ============================================================
    BUILDINGS — المباني (كتالوج الأنواع)
@@ -119,6 +299,23 @@ export const BUILDINGS = Object.freeze({
         size: { w: 2, d: 2 }
     },
 
+    // ---- مطحنة العلف : الآلة الأولى في حلقة Hay Day ----
+    feed_mill: {
+        id: 'feed_mill',
+        name: 'مطحنة العلف',
+        epithet: 'مِعلَف المزرعة',
+        nameEn: 'Feed Mill',
+        icon: '🏭',
+        category: 'production',
+        description: 'تخلط القمح والذرة والجزر إلى علف لكل حيوان.',
+        cost: { coins: 350, gems: 0 },
+        buildTime: 0,
+        unlockLevel: 2,
+        queueLimit: 1,
+        maxSlots: 3,
+        size: { w: 1, d: 1 }
+    },
+
     // ---- طاحونة الحبوب : المرحلة الأولى من السلسلة ----
     grain_mill: {
         id: 'grain_mill',
@@ -131,7 +328,8 @@ export const BUILDINGS = Object.freeze({
         cost: { coins: 500, gems: 0 },
         buildTime: 0,
         unlockLevel: 1,
-        queueLimit: 4,
+        queueLimit: 1,
+        maxSlots: 3,
         size: { w: 1, d: 1 }
     },
 
@@ -143,11 +341,29 @@ export const BUILDINGS = Object.freeze({
         nameEn: 'Bakery',
         icon: '🍞',
         category: 'production',
-        description: 'يحوّل الدقيق والمحاصيل إلى مخبوزات شهية.',
+        description: 'يحوّل القمح والدقيق إلى مخبوزات شهية.',
         cost: { coins: 1200, gems: 0 },
         buildTime: 0,
         unlockLevel: 1,
-        queueLimit: 3,
+        queueLimit: 1,
+        maxSlots: 3,
+        size: { w: 1, d: 1 }
+    },
+
+    // ---- مصنع الألبان : حليب ← قشطة ← زبدة ← جبن ----
+    dairy: {
+        id: 'dairy',
+        name: 'مصنع الألبان',
+        epithet: 'برودة الحليب',
+        nameEn: 'Dairy',
+        icon: '🥛',
+        category: 'production',
+        description: 'يحوّل الحليب إلى قشطة وزبدة وجبن.',
+        cost: { coins: 1800, gems: 0 },
+        buildTime: 0,
+        unlockLevel: 3,
+        queueLimit: 1,
+        maxSlots: 3,
         size: { w: 1, d: 1 }
     },
 
@@ -241,9 +457,25 @@ export const RECIPES = Object.freeze({
         xp: 12,
         sellPrice: 150
     },
+    sugar: {
+        id: 'sugar',
+        building: 'grain_mill',
+        name: 'سكر',
+        nameEn: 'Sugar',
+        icon: '🍬',
+        description: 'سكر مطحون من قصب السكر — يُفتح لاحقًا مع المخبوزات.',
+        ingredients: [ { item: 'sugarcane', amount: 2 } ],
+        output: { item: 'sugar', amount: 1 },
+        productionTime: 50,
+        unlockLevel: 6,
+        xp: 14,
+        sellPrice: 180
+    },
+
+    // ========== 🏭 مطحنة العلف (الآلة الأولى) ==========
     chicken_feed: {
         id: 'chicken_feed',
-        building: 'grain_mill',
+        building: 'feed_mill',
         name: 'علف الدجاج',
         nameEn: 'Chicken Feed',
         icon: '🫘',
@@ -258,6 +490,57 @@ export const RECIPES = Object.freeze({
         xp: 6,
         sellPrice: 35
     },
+    cow_feed: {
+        id: 'cow_feed',
+        building: 'feed_mill',
+        name: 'علف الأبقار',
+        nameEn: 'Cow Feed',
+        icon: '🌿',
+        description: 'علف غني بالذرة والجزر — يملأ ضرع البقرة.',
+        ingredients: [
+            { item: 'corn',   amount: 3 },
+            { item: 'carrot', amount: 1 }
+        ],
+        output: { item: 'cow_feed', amount: 2 },
+        productionTime: 30,
+        unlockLevel: 3,
+        xp: 9,
+        sellPrice: 60
+    },
+    sheep_feed: {
+        id: 'sheep_feed',
+        building: 'feed_mill',
+        name: 'علف الأغنام',
+        nameEn: 'Sheep Feed',
+        icon: '🍃',
+        description: 'قمح مضغوط — صوف أنعم وأسرع.',
+        ingredients: [
+            { item: 'wheat',  amount: 3 },
+            { item: 'carrot', amount: 1 }
+        ],
+        output: { item: 'sheep_feed', amount: 2 },
+        productionTime: 30,
+        unlockLevel: 4,
+        xp: 9,
+        sellPrice: 55
+    },
+    pig_feed: {
+        id: 'pig_feed',
+        building: 'feed_mill',
+        name: 'علف الخنازير',
+        nameEn: 'Pig Feed',
+        icon: '🥔',
+        description: 'ذرة وجزر مهروس — للكمأة الثمينة.',
+        ingredients: [
+            { item: 'corn',   amount: 2 },
+            { item: 'carrot', amount: 2 }
+        ],
+        output: { item: 'pig_feed', amount: 2 },
+        productionTime: 35,
+        unlockLevel: 4,
+        xp: 10,
+        sellPrice: 50
+    },
 
     // ========== 🍞 المخبز ==========
     bread: {
@@ -266,8 +549,8 @@ export const RECIPES = Object.freeze({
         name: 'خبز',
         nameEn: 'Bread',
         icon: '🍞',
-        description: 'خبز طازج من دقيق القمح — ذهب المخبز.',
-        ingredients: [ { item: 'flour', amount: 2 } ],
+        description: 'خبز طازج من القمح مباشرة — ذهب المخبز.',
+        ingredients: [ { item: 'wheat', amount: 3 } ],
         output: { item: 'bread', amount: 1 },
         productionTime: 60,
         unlockLevel: 1,
@@ -322,6 +605,53 @@ export const RECIPES = Object.freeze({
         unlockLevel: 3,
         xp: 34,
         sellPrice: 650
+    },
+
+    // ========== 🥛 مصنع الألبان ==========
+    cream: {
+        id: 'cream',
+        building: 'dairy',
+        name: 'قشطة',
+        nameEn: 'Cream',
+        icon: '🍶',
+        description: 'قشطة طازجة من حليب البقر — أساس الزبدة.',
+        ingredients: [ { item: 'milk', amount: 2 } ],
+        output: { item: 'cream', amount: 1 },
+        productionTime: 40,
+        unlockLevel: 3,
+        xp: 14,
+        sellPrice: 260
+    },
+    butter: {
+        id: 'butter',
+        building: 'dairy',
+        name: 'زبدة',
+        nameEn: 'Butter',
+        icon: '🧈',
+        description: 'زبدة مخفوقة من القشطة.',
+        ingredients: [ { item: 'cream', amount: 2 } ],
+        output: { item: 'butter', amount: 1 },
+        productionTime: 60,
+        unlockLevel: 4,
+        xp: 20,
+        sellPrice: 420
+    },
+    cheese: {
+        id: 'cheese',
+        building: 'dairy',
+        name: 'جبن',
+        nameEn: 'Cheese',
+        icon: '🧀',
+        description: 'قرص جبن معتّق من الحليب والزبدة.',
+        ingredients: [
+            { item: 'milk',   amount: 3 },
+            { item: 'butter', amount: 1 }
+        ],
+        output: { item: 'cheese', amount: 1 },
+        productionTime: 90,
+        unlockLevel: 5,
+        xp: 30,
+        sellPrice: 640
     }
 });
 
@@ -329,6 +659,12 @@ export const RECIPES = Object.freeze({
    ANIMALS — الحيوانات (للمراحل القادمة)
    ============================================================ */
 
+/*
+ * الحيوانات المنتجة (Brief §1 «Animals + feed»):
+ *   تأكل علفًا خاصًا بالنوع من مطحنة العلف ← الجائع لا ينتج ←
+ *   بعد مؤقّت حقيقي تنتج ← يُجمع المنتج في المخزن (Barn).
+ * `feedItem` هو الاسم الجديد؛ `feed` يبقى كمرادف للقراءات القديمة.
+ */
 export const ANIMALS = Object.freeze({
     chicken: {
         id: 'chicken',
@@ -337,8 +673,11 @@ export const ANIMALS = Object.freeze({
         icon: '🐔',
         home: 'chicken_coop',
         product: 'egg',
-        productionTime: 90,
+        productAmount: 1,
+        productionTime: 300,
+        feedItem: 'chicken_feed',
         feed: 'chicken_feed',
+        hungerRate: 0.8,
         unlockLevel: 3,
         cost: { coins: 300, gems: 0 }
     },
@@ -349,8 +688,11 @@ export const ANIMALS = Object.freeze({
         icon: '🐄',
         home: 'cow_barn',
         product: 'milk',
-        productionTime: 240,
-        feed: 'corn',
+        productAmount: 1,
+        productionTime: 600,
+        feedItem: 'cow_feed',
+        feed: 'cow_feed',
+        hungerRate: 0.5,
         unlockLevel: 5,
         cost: { coins: 900, gems: 0 }
     },
@@ -361,8 +703,11 @@ export const ANIMALS = Object.freeze({
         icon: '🐑',
         home: 'sheep_pen',
         product: 'wool',
-        productionTime: 360,
-        feed: 'wheat',
+        productAmount: 1,
+        productionTime: 900,
+        feedItem: 'sheep_feed',
+        feed: 'sheep_feed',
+        hungerRate: 0.5,
         unlockLevel: 7,
         cost: { coins: 1500, gems: 0 }
     },
@@ -373,8 +718,11 @@ export const ANIMALS = Object.freeze({
         icon: '🐷',
         home: 'pig_sty',
         product: 'truffle',
-        productionTime: 300,
-        feed: 'corn',
+        productAmount: 1,
+        productionTime: 780,
+        feedItem: 'pig_feed',
+        feed: 'pig_feed',
+        hungerRate: 0.6,
         unlockLevel: 4,
         cost: { coins: 1200, gems: 0 }
     }
@@ -491,23 +839,37 @@ export const TOOLS = Object.freeze({
    ============================================================ */
 
 export const STARTER_KIT = Object.freeze({
-    buildings: ['grain_mill', 'bakery'],
+    // الآلات الثلاث المطلوبة في هذا الـ PR + طاحونة الحبوب (الدقيق).
+    buildings: ['feed_mill', 'grain_mill', 'bakery', 'dairy'],
     items: {
-        wheat: 6,
-        corn: 4,
-        carrot: 2,
+        wheat: 12,
+        corn: 8,
+        carrot: 5,
         // بذور أولية — بدونها لا يمكن بدء حلقة الزراعة (الحصاد يعيد البذرة)
-        wheat_seed: 8,
-        corn_seed: 5,
-        carrot_seed: 3,
-        tomato_seed: 2
+        wheat_seed: 10,
+        corn_seed: 7,
+        carrot_seed: 5,
+        tomato_seed: 3,
+        soybean_seed: 2,
+        sugarcane_seed: 2,
+        // علف بداية حتى تعمل حلقة «محصول ← علف ← حيوان» فورًا
+        chicken_feed: 4,
+        cow_feed: 3,
+        // مراتب جودة التربة + مواد ترقية التخزين
+        fert_basic: 3,
+        fert_quality: 2,
+        nail: 4,
+        plank: 2,
+        duct_tape: 1
     },
-    recipes: ['flour', 'bread'],
-    // مواقع البناء على الشبكة (بين الحقول والأراضي الجنوبية)
-    positions: {
-        grain_mill: { x: -3.8, z: 4.5 },
-        bakery:     { x:  3.8, z: 4.5 }
-    }
+    recipes: ['chicken_feed', 'flour', 'bread', 'cream'],
+    // مواقع البناء من خطة zoning واحدة (FarmLayout) — ساحة الإنتاج.
+    positions: Object.freeze({
+        feed_mill:  { ...PRODUCTION_COURT.machines.feed_mill },
+        grain_mill: { ...PRODUCTION_COURT.machines.grain_mill },
+        bakery:     { ...PRODUCTION_COURT.machines.bakery },
+        dairy:      { ...PRODUCTION_COURT.machines.dairy }
+    })
 });
 
 /* ============================================================
